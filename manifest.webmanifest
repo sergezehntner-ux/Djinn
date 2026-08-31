@@ -1,0 +1,15 @@
+{
+  "name": "Djinn",
+  "short_name": "Djinn",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf6ef",
+  "theme_color": "#35104f",
+  "description": "Aide intuitive au quotidien — conseille ce qui est raisonnable de faire maintenant.",
+  "icons": [
+    {"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
