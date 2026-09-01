@@ -1,4 +1,4 @@
-const CACHE='djinn-cache-v0130';
+const CACHE='djinn-cache-v0140';
 const CORE=['./','./index.html','./styles.css?v=0130','./app.js?v=0130','./manifest.webmanifest','./icon-192.png','./icon-512.png','./favicon.png'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)))});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('djinn-cache-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
