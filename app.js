@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -21,7 +21,7 @@
   const navButtons = [...document.querySelectorAll('.nav-btn')];
 
   function cloneSeed(){ return JSON.parse(JSON.stringify(seedTasks)); }
-  function defaultState(){return {tasks:cloneSeed(),history:[],refusals:{},context:{time:20,energy:2},lastTransferAction:'Aucun export/import'};}
+  function defaultState(){return {tasks:cloneSeed(),history:[],refusals:{},context:{time:20,energy:2},smartMemory:{places:[]},lastTransferAction:'Aucun export/import'};}
   function normalizeTask(t){return {place:'',repeatValue:0,repeatUnit:'none',blockedUntil:null,lastDoneAt:null,done:false,...t};}
   function load(){
     try{
@@ -30,6 +30,8 @@
       const merged={...defaultState(),...parsed};
       merged.tasks=Array.isArray(parsed.tasks)?parsed.tasks.map(normalizeTask):cloneSeed();
       if(!merged.lastTransferAction) merged.lastTransferAction='Aucun export/import';
+      merged.smartMemory={places:[],...(parsed.smartMemory||{})};
+      merged.tasks.forEach(t=>rememberSmart('places',t.place,merged));
       return merged;
     }catch(e){return defaultState();}
   }
@@ -111,10 +113,14 @@
     }).join('');
     box.querySelectorAll('.edit-task').forEach(b=>b.onclick=()=>editTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.toggle-task').forEach(b=>b.onclick=()=>toggleTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.delete-task').forEach(b=>b.onclick=()=>deleteTask(b.closest('.task-card').dataset.id));
   }
+  function alphaSort(a,b){return a.localeCompare(b,'fr',{sensitivity:'base'});}
+  function rememberSmart(kind,value,targetState=state){const v=String(value||'').trim();if(!v)return;targetState.smartMemory=targetState.smartMemory||{};targetState.smartMemory[kind]=targetState.smartMemory[kind]||[];if(!targetState.smartMemory[kind].some(x=>x.localeCompare(v,'fr',{sensitivity:'base'})===0))targetState.smartMemory[kind].push(v);targetState.smartMemory[kind].sort(alphaSort);}
+  function smartValues(kind){const hist=[...((state.smartMemory&&state.smartMemory[kind])||[])].sort(alphaSort);let active=[];if(kind==='places')active=[...new Set(state.tasks.map(t=>t.place).filter(Boolean))].sort(alphaSort);return {active,hist};}
   function refreshSmartLists(){
-    const names=[...new Set(state.tasks.map(t=>t.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr',{sensitivity:'base'}));$('taskNameSuggestions').innerHTML=names.map(x=>`<option value="${escapeHtml(x)}"></option>`).join('');
-    const defaults=['Bureau','Buanderie','Cave','Cuisine','Dressing','Garage','Jardin','Maison','Salle de bains','Salon'];const places=[...new Set([...defaults,...state.tasks.map(t=>t.place).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'fr',{sensitivity:'base'}));$('placeSuggestions').innerHTML=places.map(x=>`<option value="${escapeHtml(x)}"></option>`).join('');$('taskPlaceFilter').innerHTML='<option value="all">Tous les lieux</option>'+places.filter(p=>state.tasks.some(t=>t.place===p)).map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    const names=[...new Set(state.tasks.map(t=>t.name).filter(Boolean))].sort(alphaSort);$('taskNameSuggestions').innerHTML=names.map(x=>`<option value="${escapeHtml(x)}"></option>`).join('');
+    const {active}=smartValues('places');$('taskPlaceFilter').innerHTML='<option value="all">Tous les lieux</option>'+active.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
   }
+  function renderPlaceMenu(query='',openedByToggle=false){const menu=$('placeMenu');const {active,hist}=smartValues('places');const q=query.trim().toLocaleLowerCase('fr');let vals;if(q){vals=hist.filter(v=>v.toLocaleLowerCase('fr').includes(q));}else{vals=active;}vals=[...new Set(vals)].sort(alphaSort);menu.innerHTML=(vals.length?vals.map(v=>`<button type="button" class="smart-option" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`).join(''):'<div class="smart-empty">Aucune valeur active</div>')+`<button type="button" class="smart-option other" data-other="1">… Autre</button>`;menu.classList.remove('hidden');menu.querySelectorAll('[data-value]').forEach(b=>b.onclick=()=>{$('taskPlace').value=b.dataset.value;menu.classList.add('hidden');});menu.querySelector('[data-other]').onclick=()=>{$('taskPlace').value='';menu.classList.add('hidden');$('taskPlace').focus();toast('Saisis le nouveau lieu : Djinn le gardera en mémoire.');};}
   function openForm(clear=true){$('taskForm').classList.remove('hidden');if(clear){returnToTaskId=null;$('formTitle').textContent='Ajouter une tâche';$('taskId').value='';$('taskName').value='';$('taskDuration').value=10;$('taskPlace').value='';$('taskImportance').value=2;$('taskUrgency').value=2;$('taskEffort').value=2;$('taskRepeatValue').value='';$('taskRepeatUnit').value='none';$('taskConsequence').value='';}$('taskName').focus();}
   function closeForm(){$('taskForm').classList.add('hidden');returnToTaskId=null;}
   function editTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;returnToTaskId=id;openForm(false);$('formTitle').textContent='Modifier la tâche';$('taskId').value=t.id;$('taskName').value=t.name;$('taskDuration').value=t.duration;$('taskPlace').value=t.place||'';$('taskImportance').value=t.importance;$('taskUrgency').value=t.urgency;$('taskEffort').value=t.effort;$('taskRepeatValue').value=t.repeatValue||'';$('taskRepeatUnit').value=t.repeatUnit||'none';$('taskConsequence').value=t.consequence||'';$('taskForm').scrollIntoView({behavior:'smooth',block:'start'});}
@@ -122,20 +128,24 @@
     const name=$('taskName').value.trim();if(!name){toast('Donne un nom à la tâche.');return;}
     let repeatValue=Math.max(0,Number($('taskRepeatValue').value)||0),repeatUnit=$('taskRepeatUnit').value;if(!repeatValue)repeatUnit='none';
     const data={name,duration:Math.max(1,Number($('taskDuration').value)||10),place:$('taskPlace').value.trim(),importance:Number($('taskImportance').value),urgency:Number($('taskUrgency').value),effort:Number($('taskEffort').value),repeatValue,repeatUnit,consequence:$('taskConsequence').value.trim()};
-    const id=$('taskId').value;const targetId=id||('t'+Date.now());if(id){Object.assign(state.tasks.find(x=>x.id===id),data);}else state.tasks.push(normalizeTask({id:targetId,...data}));
+    rememberSmart('places',data.place);const id=$('taskId').value;const targetId=id||('t'+Date.now());if(id){Object.assign(state.tasks.find(x=>x.id===id),data);}else state.tasks.push(normalizeTask({id:targetId,...data}));
     save();$('taskForm').classList.add('hidden');excludedThisRound.clear();renderTasks();chooseSuggestion();
     const backId=returnToTaskId||targetId;returnToTaskId=null;requestAnimationFrame(()=>{const el=document.querySelector(`.task-card[data-id="${backId}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600);}});
   }
   function toggleTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;if(isWaiting(t)){t.blockedUntil=null;t.done=false;toast('Cette tâche est de nouveau proposable maintenant.');}else if(t.done){t.done=false;delete t.doneAt;toast('Tâche réactivée.');}else{markTaskDone(t,'manual');if(t.blockedUntil)toast(`Fait. À reproposer après le ${formatDate(t.blockedUntil)}.`);else toast('Tâche marquée comme faite.');}save();excludedThisRound.clear();renderTasks();chooseSuggestion();}
   function deleteTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;if(!confirm(`Supprimer « ${t.name} » ?`))return;state.tasks=state.tasks.filter(x=>x.id!==id);save();excludedThisRound.clear();renderTasks();chooseSuggestion();}
-  function openTaskFromMind(id){setView('tasks');requestAnimationFrame(()=>{renderTasks();editTask(id);});}
+  let detailTaskId=null;
+  function openTaskFromMind(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;detailTaskId=id;const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';$('detailTitle').textContent=t.name;$('taskDetailBody').innerHTML=`<div class="detail-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="detail-status">${statusText}</div><p>${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p>`;$('detailDone').textContent=status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'✓ Fait';$('taskDetailModal').classList.remove('hidden');}
+  function closeTaskDetail(){$('taskDetailModal').classList.add('hidden');detailTaskId=null;}
+  function detailToggle(){if(!detailTaskId)return;toggleTask(detailTaskId);closeTaskDetail();}
+
 
   function renderLearning(){const refusals=Object.entries(state.refusals).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);const recent=state.history.slice(0,8);let html='<h3>Premiers signaux</h3>';if(!refusals.length)html+='<p class="muted">Djinn n’a pas encore observé de refus. Utilise « Pas envie » quand une proposition tombe mal.</p>';else html+=refusals.map(([id,n])=>{const t=state.tasks.find(x=>x.id===id);return `<div class="learning-row"><strong>${escapeHtml(t?.name||'Tâche supprimée')}</strong><div>${n} refus enregistré${n>1?'s':''}. Djinn réduit légèrement sa priorité dans les mêmes conditions.</div></div>`}).join('');html+='<h3 style="margin-top:20px">Historique récent</h3>';html+=recent.length?recent.map(h=>`<div class="learning-row"><strong>${h.type==='done'?'✓ Fait':'☹ Pas envie'} — ${escapeHtml(h.name)}</strong><div class="muted">${new Date(h.at).toLocaleString('fr-FR')} · ${h.context?.time===999?'temps libre':(h.context?.time||'?')+' min'} · énergie ${h.context?.energy||'?'}/3${h.nextEligibleAt?' · reproposable le '+formatDate(h.nextEligibleAt):''}</div></div>`).join(''):'<p class="muted">Aucun apprentissage enregistré pour l’instant.</p>';$('learningList').innerHTML=html;}
   function renderStats(){const done=state.history.filter(h=>h.type==='done').length;const refus=state.history.filter(h=>h.type==='refused').length;$('taskCount').textContent=state.tasks.filter(isAvailable).length;$('doneCount').textContent=done;$('refusalCount').textContent=refus;}
   function setView(id){views.forEach(v=>v.classList.toggle('active',v.id===id));navButtons.forEach(b=>b.classList.toggle('active',b.dataset.view===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='tasks')renderTasks();if(id==='learning')renderLearning();}
 
   function exportData(){const payload={app:'Djinn',version:VERSION,exportedAt:new Date().toISOString(),state};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);const stamp=new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);a.download=`Djinn_${stamp}.djinnbak`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);state.lastTransferAction=`Export ${a.download} · ${nowLabel()}`;save();toast('Sauvegarde exportée.');}
-  function importData(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);const incoming=parsed.state||parsed;if(!incoming||!Array.isArray(incoming.tasks))throw new Error('format');if(!confirm(`Importer « ${file.name} » et remplacer les données locales actuelles ?`))return;state={...defaultState(),...incoming,tasks:incoming.tasks.map(normalizeTask)};state.lastTransferAction=`Import ${file.name} · ${nowLabel()}`;excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Sauvegarde importée.');}catch(e){alert('Ce fichier ne semble pas être une sauvegarde Djinn valide.');}finally{$('importFile').value='';}};reader.readAsText(file);}
+  function importData(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);const incoming=parsed.state||parsed;if(!incoming||!Array.isArray(incoming.tasks))throw new Error('format');if(!confirm(`Importer « ${file.name} » et remplacer les données locales actuelles ?`))return;state={...defaultState(),...incoming,tasks:incoming.tasks.map(normalizeTask),smartMemory:{places:[],...(incoming.smartMemory||{})}};state.tasks.forEach(t=>rememberSmart('places',t.place));state.lastTransferAction=`Import ${file.name} · ${nowLabel()}`;excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Sauvegarde importée.');}catch(e){alert('Ce fichier ne semble pas être une sauvegarde Djinn valide.');}finally{$('importFile').value='';}};reader.readAsText(file);}
 
   navButtons.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
   $('timeAvailable').value=String(state.context.time||20);$('energy').value=String(state.context.energy||2);
@@ -145,6 +155,8 @@
   ['taskSearch','taskStatusFilter','taskPlaceFilter'].forEach(id=>$(id).addEventListener(id==='taskSearch'?'input':'change',renderTasks));
   $('photoDemo').onclick=()=>toast('La photo sera activée dans une prochaine version.');$('voiceDemo').onclick=()=>toast('La voix viendra plus tard.');$('writeDemo').onclick=()=>{setView('tasks');openForm(true);toast('Pour l’instant, écris la situation comme une tâche.');};
   $('exportData').onclick=exportData;$('importData').onclick=()=>$('importFile').click();$('importFile').addEventListener('change',e=>importData(e.target.files?.[0]));
+  $('placeToggle').onclick=()=>renderPlaceMenu('',true);$('taskPlace').addEventListener('input',e=>renderPlaceMenu(e.target.value));$('taskPlace').addEventListener('focus',e=>renderPlaceMenu(e.target.value));document.addEventListener('click',e=>{if(!$('placeSmartField').contains(e.target))$('placeMenu').classList.add('hidden');});
+  $('closeTaskDetail').onclick=closeTaskDetail;$('detailClose').onclick=closeTaskDetail;$('detailDone').onclick=detailToggle;$('taskDetailModal').addEventListener('click',e=>{if(e.target===$('taskDetailModal'))closeTaskDetail();});
   $('resetDemo').onclick=()=>{if(!confirm('Réinitialiser toutes les données locales de Djinn ?'))return;state=defaultState();excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Données de démonstration réinitialisées.');};
 
   renderHeader();renderBackupInfo();refreshSmartLists();renderTasks();renderLearning();renderStats();chooseSuggestion();

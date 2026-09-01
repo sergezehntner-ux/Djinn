@@ -5,8 +5,8 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#fbf8f2",
-  "theme_color": "#6d477c",
+  "background_color": "#f7f0e5",
+  "theme_color": "#684075",
   "description": "Aide intuitive au quotidien — conseille ce qui est raisonnable de faire maintenant.",
   "icons": [
     {"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
