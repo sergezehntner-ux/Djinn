@@ -24,8 +24,13 @@ main{max-width:1420px;margin:0 auto;padding:22px}.view{display:none}.view.active
 .last-action{width:100%;max-width:none;justify-self:end;overflow-wrap:anywhere}
 .app-logo{object-fit:cover;background:transparent}
 #tasks .title-row{position:static;background:transparent;padding:0;margin-top:0;border-bottom:0}
-#openTaskForm{position:fixed;top:68px;right:max(22px,calc((100vw - 1420px)/2 + 22px));z-index:19;flex:0 0 auto;box-shadow:0 6px 16px rgba(78,18,108,.18)}
+#openTaskForm{flex:0 0 auto;box-shadow:0 6px 16px rgba(78,18,108,.18)}
 .field-hint{font-size:.84rem;color:var(--muted);font-weight:600;margin-top:2px}.compact-modal{width:min(430px,100%)}.number-prompt{display:grid;gap:7px;font-weight:750;color:#4b3f4e;margin:14px 0}.number-prompt input{border:1px solid #d8cedb;border-radius:10px;padding:12px;background:#fff;color:var(--ink);width:100%;font-size:1.15rem}
-@media(max-width:620px){.app-header{grid-template-columns:1fr}.tagline{white-space:nowrap;font-size:.78rem}.last-action{display:none}.title-row{align-items:center}#openTaskForm{top:58px;right:13px}}
+@media(max-width:620px){.app-header{grid-template-columns:1fr}.tagline{white-space:nowrap;font-size:.78rem}.last-action{display:none}.title-row{align-items:center}}
 
 /* v0.1.4 — seul le bouton + Ajouter reste fixé */
+
+/* v0.1.5 — bouton Ajouter flottant uniquement sous la navigation */
+.task-add-sticky{position:sticky;top:68px;z-index:18;height:0;display:flex;justify-content:flex-end;pointer-events:none;margin:0 0 0 auto}
+.task-add-sticky #openTaskForm{pointer-events:auto;margin-top:0;margin-right:0}
+@media(max-width:620px){.task-add-sticky{top:58px}}

@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
