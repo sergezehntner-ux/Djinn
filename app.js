@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -48,6 +48,12 @@
   function isAvailable(t){return !t.done && !isWaiting(t);}
   function addPeriod(from,value,unit){const d=new Date(from);const n=Math.max(0,Number(value)||0);if(unit==='days')d.setDate(d.getDate()+n);else if(unit==='weeks')d.setDate(d.getDate()+n*7);else if(unit==='months')d.setMonth(d.getMonth()+n);else if(unit==='years')d.setFullYear(d.getFullYear()+n);return d;}
   function temporaliteLabel(t){if(!hasTemporalite(t))return 'Aucune';const labels={days:'jour(s)',weeks:'semaine(s)',months:'mois',years:'année(s)'};return `${t.repeatValue} ${labels[t.repeatUnit]}`;}
+  const temporalUnits={days:'jour(s)',weeks:'semaine(s)',months:'mois',years:'année(s)'};
+  let previousRepeatUnit='none';
+  function updateTemporalSummary(){const unit=$('taskRepeatUnit').value,value=Math.max(0,Number($('taskRepeatValue').value)||0);$('temporalSummary').textContent=(unit!=='none'&&value)?`${value} ${temporalUnits[unit]}`:'Aucune temporalité';}
+  function openTemporalPrompt(unit){if(unit==='none'){ $('taskRepeatValue').value='0'; previousRepeatUnit='none'; updateTemporalSummary(); return; } const existing=previousRepeatUnit===unit?Math.max(1,Number($('taskRepeatValue').value)||1):1;$('temporalNumber').value=existing;$('temporalTitle').textContent=`À reproposer après — ${temporalUnits[unit]}`;$('temporalModal').classList.remove('hidden');setTimeout(()=>{$('temporalNumber').focus();$('temporalNumber').select();},0);}
+  function closeTemporalPrompt(revert=false){if(revert){$('taskRepeatUnit').value=previousRepeatUnit;}$('temporalModal').classList.add('hidden');updateTemporalSummary();}
+  function saveTemporalPrompt(){const n=Math.max(1,Math.min(999,Number($('temporalNumber').value)||1));$('taskRepeatValue').value=String(n);previousRepeatUnit=$('taskRepeatUnit').value;$('temporalModal').classList.add('hidden');updateTemporalSummary();}
 
   function scoreTask(t,time,energy){
     if(excludedThisRound.has(t.id)) return -9999;
@@ -121,9 +127,9 @@
     const {active}=smartValues('places');$('taskPlaceFilter').innerHTML='<option value="all">Tous les lieux</option>'+active.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
   }
   function renderPlaceMenu(query='',openedByToggle=false){const menu=$('placeMenu');const {active,hist}=smartValues('places');const q=query.trim().toLocaleLowerCase('fr');let vals;if(q){vals=hist.filter(v=>v.toLocaleLowerCase('fr').includes(q));}else{vals=active;}vals=[...new Set(vals)].sort(alphaSort);menu.innerHTML=(vals.length?vals.map(v=>`<button type="button" class="smart-option" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`).join(''):'<div class="smart-empty">Aucune valeur active</div>')+`<button type="button" class="smart-option other" data-other="1">… Autre</button>`;menu.classList.remove('hidden');menu.querySelectorAll('[data-value]').forEach(b=>b.onclick=()=>{$('taskPlace').value=b.dataset.value;menu.classList.add('hidden');});menu.querySelector('[data-other]').onclick=()=>{$('taskPlace').value='';menu.classList.add('hidden');$('taskPlace').focus();toast('Saisis le nouveau lieu : Djinn le gardera en mémoire.');};}
-  function openForm(clear=true){$('taskForm').classList.remove('hidden');if(clear){returnToTaskId=null;$('formTitle').textContent='Ajouter une tâche';$('taskId').value='';$('taskName').value='';$('taskDuration').value=10;$('taskPlace').value='';$('taskImportance').value=2;$('taskUrgency').value=2;$('taskEffort').value=2;$('taskRepeatValue').value='';$('taskRepeatUnit').value='none';$('taskConsequence').value='';}$('taskName').focus();}
+  function openForm(clear=true){$('taskForm').classList.remove('hidden');if(clear){returnToTaskId=null;$('formTitle').textContent='Ajouter une tâche';$('taskId').value='';$('taskName').value='';$('taskDuration').value=10;$('taskPlace').value='';$('taskImportance').value=2;$('taskUrgency').value=2;$('taskEffort').value=2;$('taskRepeatValue').value='0';$('taskRepeatUnit').value='none';previousRepeatUnit='none';updateTemporalSummary();$('taskConsequence').value='';}$('taskName').focus();}
   function closeForm(){$('taskForm').classList.add('hidden');returnToTaskId=null;}
-  function editTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;returnToTaskId=id;openForm(false);$('formTitle').textContent='Modifier la tâche';$('taskId').value=t.id;$('taskName').value=t.name;$('taskDuration').value=t.duration;$('taskPlace').value=t.place||'';$('taskImportance').value=t.importance;$('taskUrgency').value=t.urgency;$('taskEffort').value=t.effort;$('taskRepeatValue').value=t.repeatValue||'';$('taskRepeatUnit').value=t.repeatUnit||'none';$('taskConsequence').value=t.consequence||'';$('taskForm').scrollIntoView({behavior:'smooth',block:'start'});}
+  function editTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;returnToTaskId=id;openForm(false);$('formTitle').textContent='Modifier la tâche';$('taskId').value=t.id;$('taskName').value=t.name;$('taskDuration').value=String(Math.min(60,Math.max(5,Math.round((Number(t.duration)||10)/5)*5)));$('taskPlace').value=t.place||'';$('taskImportance').value=t.importance;$('taskUrgency').value=t.urgency;$('taskEffort').value=t.effort;$('taskRepeatValue').value=t.repeatValue||'0';$('taskRepeatUnit').value=t.repeatUnit||'none';previousRepeatUnit=$('taskRepeatUnit').value;updateTemporalSummary();$('taskConsequence').value=t.consequence||'';$('taskForm').scrollIntoView({behavior:'smooth',block:'start'});}
   function saveTask(){
     const name=$('taskName').value.trim();if(!name){toast('Donne un nom à la tâche.');return;}
     let repeatValue=Math.max(0,Number($('taskRepeatValue').value)||0),repeatUnit=$('taskRepeatUnit').value;if(!repeatValue)repeatUnit='none';
@@ -156,6 +162,7 @@
   $('photoDemo').onclick=()=>toast('La photo sera activée dans une prochaine version.');$('voiceDemo').onclick=()=>toast('La voix viendra plus tard.');$('writeDemo').onclick=()=>{setView('tasks');openForm(true);toast('Pour l’instant, écris la situation comme une tâche.');};
   $('exportData').onclick=exportData;$('importData').onclick=()=>$('importFile').click();$('importFile').addEventListener('change',e=>importData(e.target.files?.[0]));
   $('placeToggle').onclick=()=>renderPlaceMenu('',true);$('taskPlace').addEventListener('input',e=>renderPlaceMenu(e.target.value));$('taskPlace').addEventListener('focus',e=>renderPlaceMenu(e.target.value));document.addEventListener('click',e=>{if(!$('placeSmartField').contains(e.target))$('placeMenu').classList.add('hidden');});
+  $('taskRepeatUnit').addEventListener('focus',()=>{previousRepeatUnit=$('taskRepeatUnit').value;});$('taskRepeatUnit').addEventListener('change',e=>openTemporalPrompt(e.target.value));$('saveTemporal').onclick=saveTemporalPrompt;$('cancelTemporal').onclick=()=>closeTemporalPrompt(true);$('closeTemporal').onclick=()=>closeTemporalPrompt(true);$('temporalModal').addEventListener('click',e=>{if(e.target===$('temporalModal'))closeTemporalPrompt(true);});$('temporalNumber').addEventListener('keydown',e=>{if(e.key==='Enter')saveTemporalPrompt();});
   $('closeTaskDetail').onclick=closeTaskDetail;$('detailClose').onclick=closeTaskDetail;$('detailDone').onclick=detailToggle;$('taskDetailModal').addEventListener('click',e=>{if(e.target===$('taskDetailModal'))closeTaskDetail();});
   $('resetDemo').onclick=()=>{if(!confirm('Réinitialiser toutes les données locales de Djinn ?'))return;state=defaultState();excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Données de démonstration réinitialisées.');};
 

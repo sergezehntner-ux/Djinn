@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#6d477c">
   <meta name="description" content="Djinn — aide intuitive au quotidien, local-first.">
-  <title>Djinn v0.1.2</title>
+  <title>Djinn v0.1.3</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=0120">
+  <link rel="stylesheet" href="styles.css?v=0130">
 </head>
 <body>
   <header class="app-header">
@@ -18,7 +18,7 @@
       <div>
         <h1>Djinn</h1>
         <div class="tagline">Votre quotidien, sans la charge mentale</div>
-        <small>v0.1.2 · Terrain</small>
+        <small>v0.1.3 · Terrain</small>
       </div>
     </div>
     <div id="lastAction" class="last-action">Dernière action : aucun export/import</div>
@@ -89,13 +89,12 @@
         <h3 id="formTitle">Ajouter une tâche</h3><input type="hidden" id="taskId">
         <div class="form-grid">
           <label>Nom<input id="taskName" list="taskNameSuggestions" placeholder="p. ex. Lancer une lessive"></label>
-          <label>Durée estimée (min)<input id="taskDuration" type="number" min="1" max="480" value="10"></label>
+          <label>Durée estimée<select id="taskDuration"><option value="5">≈ 5 min</option><option value="10" selected>≈ 10 min</option><option value="15">≈ 15 min</option><option value="20">≈ 20 min</option><option value="25">≈ 25 min</option><option value="30">≈ 30 min</option><option value="35">≈ 35 min</option><option value="40">≈ 40 min</option><option value="45">≈ 45 min</option><option value="50">≈ 50 min</option><option value="55">≈ 55 min</option><option value="60">≈ 60 min</option></select></label>
           <label>Lieu<div class="smart-field" id="placeSmartField"><input id="taskPlace" autocomplete="off" placeholder="Choisir ou saisir un lieu"><button type="button" class="smart-toggle" id="placeToggle" aria-label="Ouvrir la liste des lieux">⌄</button><div id="placeMenu" class="smart-menu hidden"></div></div></label>
           <label>Importance<select id="taskImportance"><option value="1">Faible</option><option value="2" selected>Normale</option><option value="3">Importante</option></select></label>
           <label>Urgence<select id="taskUrgency"><option value="1">Peut attendre</option><option value="2" selected>Bientôt</option><option value="3">Urgent</option></select></label>
           <label>Effort<select id="taskEffort"><option value="1">Facile</option><option value="2" selected>Moyen</option><option value="3">Demandant</option></select></label>
-          <label>À reproposer après<input id="taskRepeatValue" type="number" min="0" max="999" placeholder="0"></label>
-          <label>Unité<select id="taskRepeatUnit"><option value="none">Aucune temporalité</option><option value="days">jour(s)</option><option value="weeks">semaine(s)</option><option value="months">mois</option><option value="years">année(s)</option></select></label>
+          <label>À reproposer après<select id="taskRepeatUnit"><option value="none">Aucune temporalité</option><option value="days">Jours…</option><option value="weeks">Semaines…</option><option value="months">Mois…</option><option value="years">Années…</option></select><input id="taskRepeatValue" type="hidden" value="0"><div id="temporalSummary" class="field-hint">Aucune temporalité</div></label>
           <label class="wide">Conséquence si j’attends<input id="taskConsequence" placeholder="p. ex. risque de manquer de vêtements propres"></label>
         </div>
         <datalist id="taskNameSuggestions"></datalist>
@@ -128,9 +127,11 @@
     </section>
   </main>
 
+  <div id="temporalModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="temporalTitle"><div class="modal-card compact-modal"><div class="modal-head"><div><div class="eyebrow">↻ Temporalité</div><h2 id="temporalTitle">À reproposer après</h2></div><button id="closeTemporal" class="icon-btn" aria-label="Fermer">✕</button></div><label class="number-prompt">Nombre<input id="temporalNumber" type="number" min="1" max="999" inputmode="numeric" value="1"></label><div class="actions"><button id="saveTemporal" class="primary">Valider</button><button id="cancelTemporal" class="secondary">Annuler</button></div></div></div>
+
   <div id="taskDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">📝 Tâche</div><h2 id="detailTitle">Tâche</h2></div><button id="closeTaskDetail" class="icon-btn" aria-label="Fermer">✕</button></div><div id="taskDetailBody"></div><div class="actions"><button id="detailDone" class="primary">✓ Fait</button><button id="detailClose" class="secondary">Retour</button></div></div></div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0120"></script>
+  <script src="app.js?v=0130"></script>
 </body>
 </html>
