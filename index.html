@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#35104f">
+  <meta name="theme-color" content="#6d477c">
   <meta name="description" content="Djinn — aide intuitive au quotidien, local-first.">
-  <title>Djinn v0.1.0</title>
+  <title>Djinn v0.1.1</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=0100">
+  <link rel="stylesheet" href="styles.css?v=0110">
 </head>
 <body>
   <header class="app-header">
@@ -18,10 +18,10 @@
       <div>
         <h1>Djinn</h1>
         <div class="tagline">Votre quotidien, sans la charge mentale</div>
-        <small>v0.1.0 · prototype local-first</small>
+        <small>v0.1.1 · Terrain</small>
       </div>
     </div>
-    <div id="lastAction" class="last-action">Première visite</div>
+    <div id="lastAction" class="last-action">Dernière action : aucun export/import</div>
   </header>
 
   <nav class="top-nav" aria-label="Navigation principale">
@@ -43,22 +43,13 @@
           <label class="context-box">
             <span>Temps disponible</span>
             <select id="timeAvailable">
-              <option value="5">≈ 5 min</option>
-              <option value="10">≈ 10 min</option>
-              <option value="20" selected>≈ 20 min</option>
-              <option value="30">≈ 30 min</option>
-              <option value="45">≈ 45 min</option>
-              <option value="60">≈ 1 heure</option>
-              <option value="999">Peu importe</option>
+              <option value="5">≈ 5 min</option><option value="10">≈ 10 min</option><option value="20" selected>≈ 20 min</option>
+              <option value="30">≈ 30 min</option><option value="45">≈ 45 min</option><option value="60">≈ 1 heure</option><option value="999">Peu importe</option>
             </select>
           </label>
           <label class="context-box">
             <span>Ton énergie</span>
-            <select id="energy">
-              <option value="1">Faible</option>
-              <option value="2" selected>Moyenne</option>
-              <option value="3">Bonne</option>
-            </select>
+            <select id="energy"><option value="1">Faible</option><option value="2" selected>Moyenne</option><option value="3">Bonne</option></select>
           </label>
         </div>
       </div>
@@ -66,119 +57,78 @@
       <div class="dashboard-grid">
         <article class="card suggestion-card">
           <div class="card-title-row">
-            <div>
-              <div class="eyebrow">✨ Ma suggestion</div>
-              <h2 id="suggestionTitle">Je réfléchis…</h2>
-            </div>
+            <div><div class="eyebrow">✨ Ma suggestion</div><h2 id="suggestionTitle">Je réfléchis…</h2></div>
             <button id="whyTop" class="ghost small">Pourquoi celle-ci&nbsp;?</button>
           </div>
-          <div class="suggestion-meta">
-            <span id="suggestionDuration">⏱ —</span>
-            <span id="suggestionEffort">◉ —</span>
-          </div>
+          <div class="suggestion-meta"><span id="suggestionDuration">⏱ —</span><span id="suggestionEffort">◉ —</span><span id="suggestionPlace" class="hidden">📍 —</span></div>
           <p id="suggestionReason" class="reason">Djinn compare les tâches disponibles.</p>
           <div class="main-actions">
             <button id="doIt" class="primary">✓ D’accord, je m’y mets</button>
-            <div class="action-row">
-              <button id="notNow" class="secondary">☹ Pas envie</button>
-              <button id="another" class="secondary">↻ Autre chose</button>
-              <button id="why" class="secondary">? Pourquoi&nbsp;?</button>
-            </div>
+            <div class="action-row"><button id="notNow" class="secondary">☹ Pas envie</button><button id="another" class="secondary">↻ Autre chose</button></div>
           </div>
         </article>
 
         <aside class="side-stack">
-          <section class="card">
-            <div class="eyebrow">💡 À garder en tête</div>
-            <div id="keepInMind" class="mini-list"></div>
-          </section>
-          <section class="card soft-card">
-            <div class="eyebrow">⚖ Si j’attends…</div>
-            <p id="consequenceText">Djinn affichera ici la conséquence principale d’un report.</p>
-          </section>
+          <section class="card"><div class="eyebrow">💡 À garder en tête</div><div id="keepInMind" class="mini-list"></div></section>
+          <section class="card soft-card"><div class="eyebrow">⚖ Si j’attends…</div><p id="consequenceText">Djinn affichera ici la conséquence principale d’un report.</p></section>
         </aside>
       </div>
 
       <section class="card show-me-card">
-        <div>
-          <div class="eyebrow">🪔 Montre-moi ce qui t’embête</div>
-          <p class="muted">Ces entrées sont préparées pour les prochaines versions. La photo et la voix ne sont pas encore analysées.</p>
-        </div>
-        <div class="input-actions">
-          <button id="photoDemo" class="secondary">📷 Prendre une photo</button>
-          <button id="voiceDemo" class="secondary">🎙 M’expliquer</button>
-          <button id="writeDemo" class="secondary">✏ Écrire</button>
-        </div>
+        <div><div class="eyebrow">🪔 Montre-moi ce qui t’embête</div><p class="muted">Ces entrées sont préparées pour les prochaines versions. La photo et la voix ne sont pas encore analysées.</p></div>
+        <div class="input-actions"><button id="photoDemo" class="secondary">📷 Prendre une photo</button><button id="voiceDemo" class="secondary">🎙 M’expliquer</button><button id="writeDemo" class="secondary">✏ Écrire</button></div>
       </section>
 
-      <section class="card status-card">
-        <div class="eyebrow">🌙 État du Djinn</div>
-        <div class="status-grid">
-          <div><strong id="taskCount">0</strong><span>tâches actives</span></div>
-          <div><strong id="doneCount">0</strong><span>actions faites</span></div>
-          <div><strong id="refusalCount">0</strong><span>« pas envie » appris</span></div>
-        </div>
-      </section>
+      <section class="card status-card"><div class="eyebrow">🌙 État du Djinn</div><div class="status-grid"><div><strong id="taskCount">0</strong><span>tâches proposées maintenant</span></div><div><strong id="doneCount">0</strong><span>actions faites</span></div><div><strong id="refusalCount">0</strong><span>« pas envie » appris</span></div></div></section>
     </section>
 
     <section id="tasks" class="view">
-      <div class="title-row">
-        <div>
-          <div class="eyebrow">📝 La mémoire de base</div>
-          <h2>Mes tâches</h2>
-          <p class="muted">Cette liste existe pour nourrir Djinn. Elle n’est pas l’écran principal.</p>
-        </div>
-        <button id="openTaskForm" class="primary">+ Ajouter</button>
-      </div>
+      <div class="title-row"><div><div class="eyebrow">📝 La mémoire de base</div><h2>Mes tâches</h2><p class="muted">Les tâches restent enregistrées localement pendant les mises à jour de Djinn.</p></div><button id="openTaskForm" class="primary">+ Ajouter</button></div>
 
       <div id="taskForm" class="card form-panel hidden">
-        <h3 id="formTitle">Ajouter une tâche</h3>
-        <input type="hidden" id="taskId">
+        <h3 id="formTitle">Ajouter une tâche</h3><input type="hidden" id="taskId">
         <div class="form-grid">
-          <label>Nom<input id="taskName" placeholder="p. ex. Lancer une lessive"></label>
+          <label>Nom<input id="taskName" list="taskNameSuggestions" placeholder="p. ex. Lancer une lessive"></label>
           <label>Durée estimée (min)<input id="taskDuration" type="number" min="1" max="480" value="10"></label>
+          <label>Lieu<input id="taskPlace" list="placeSuggestions" placeholder="p. ex. cuisine, cave, dressing"></label>
           <label>Importance<select id="taskImportance"><option value="1">Faible</option><option value="2" selected>Normale</option><option value="3">Importante</option></select></label>
           <label>Urgence<select id="taskUrgency"><option value="1">Peut attendre</option><option value="2" selected>Bientôt</option><option value="3">Urgent</option></select></label>
           <label>Effort<select id="taskEffort"><option value="1">Facile</option><option value="2" selected>Moyen</option><option value="3">Demandant</option></select></label>
+          <label>À reproposer après<input id="taskRepeatValue" type="number" min="0" max="999" placeholder="0"></label>
+          <label>Unité<select id="taskRepeatUnit"><option value="none">Aucune temporalité</option><option value="days">jour(s)</option><option value="weeks">semaine(s)</option><option value="months">mois</option><option value="years">année(s)</option></select></label>
           <label class="wide">Conséquence si j’attends<input id="taskConsequence" placeholder="p. ex. risque de manquer de vêtements propres"></label>
         </div>
-        <div class="actions">
-          <button id="saveTask" class="primary">Enregistrer</button>
-          <button id="cancelTask" class="secondary">Annuler</button>
-        </div>
+        <datalist id="taskNameSuggestions"></datalist><datalist id="placeSuggestions"></datalist>
+        <div class="actions"><button id="saveTask" class="primary">Enregistrer</button><button id="cancelTask" class="secondary">Annuler</button></div>
       </div>
+
+      <section class="card filter-card">
+        <h3>Rechercher / Filtrer</h3>
+        <div class="filter-grid">
+          <label>Recherche<input id="taskSearch" type="search" placeholder="Nom, conséquence ou lieu…"></label>
+          <label>État<select id="taskStatusFilter"><option value="all">Toutes</option><option value="available">Proposables maintenant</option><option value="waiting">En attente de temporalité</option><option value="done">Terminées</option></select></label>
+          <label>Lieu<select id="taskPlaceFilter"><option value="all">Tous les lieux</option></select></label>
+        </div>
+      </section>
       <div id="taskList" class="task-list"></div>
     </section>
 
-    <section id="learning" class="view">
-      <div class="title-row">
-        <div>
-          <div class="eyebrow">🧠 Ce que Djinn apprend</div>
-          <h2>Apprentissages</h2>
-          <p class="muted">Pour cette première version, Djinn mémorise uniquement les acceptations, refus et durées de contexte.</p>
-        </div>
-      </div>
-      <div id="learningList" class="card"></div>
-    </section>
+    <section id="learning" class="view"><div class="title-row"><div><div class="eyebrow">🧠 Ce que Djinn apprend</div><h2>Apprentissages</h2><p class="muted">Djinn mémorise les acceptations, refus et contextes observés.</p></div></div><div id="learningList" class="card"></div></section>
 
     <section id="more" class="view">
       <div class="title-row"><div><div class="eyebrow">⚙ Réglages</div><h2>Plus</h2></div></div>
       <div class="card settings-card">
-        <h3>Données locales</h3>
-        <p>Cette version conserve ses tâches et apprentissages dans le navigateur de cet appareil.</p>
-        <div class="actions">
-          <button id="resetDemo" class="danger">Réinitialiser les données de démonstration</button>
-        </div>
+        <h3>Sauvegarde</h3>
+        <p>Exportez régulièrement les données pour les transférer entre Smartphone et Notebook. L’import remplace les données locales par celles du fichier choisi.</p>
+        <div class="backup-info" id="backupInfo">Dernière action : aucun export/import</div>
+        <div class="actions"><button id="exportData" class="primary">Exporter les données</button><button id="importData" class="secondary">Importer les données</button><input id="importFile" type="file" accept="application/json,.json,.djinnbak" class="hidden"></div>
       </div>
-      <div class="card">
-        <h3>Ce qui n’est pas encore actif</h3>
-        <p class="muted">IA, analyse photo, voix, notifications natives, bridge Android et connexion aux autres applications SZ viendront plus tard, une brique à la fois.</p>
-      </div>
+      <div class="card settings-card"><h3>Données locales</h3><p>Cette version conserve ses tâches et apprentissages dans le navigateur de cet appareil, y compris lors du passage de v0.1.0 à v0.1.1.</p><div class="actions"><button id="resetDemo" class="danger">Réinitialiser les données de démonstration</button></div></div>
+      <div class="card"><h3>Ce qui n’est pas encore actif</h3><p class="muted">IA, analyse photo, voix, notifications natives, bridge Android et connexion aux autres applications SZ viendront plus tard, une brique à la fois.</p></div>
     </section>
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-  <script src="app.js?v=0100"></script>
+  <script src="app.js?v=0110"></script>
 </body>
 </html>
