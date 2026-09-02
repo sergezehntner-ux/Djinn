@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -57,9 +57,9 @@
 
   function timeBand(minutes){if(minutes===999)return 'libre';if(minutes<=10)return 'court';if(minutes<=30)return 'moyen';return 'long';}
   function dayPart(date=new Date()){const h=date.getHours();if(h<11)return 'matin';if(h<14)return 'midi';if(h<18)return 'après-midi';return 'soir';}
-  function contextualRefusals(t,time,energy){
+  function contextualHistoryCount(t,time,energy,type){
     const band=timeBand(time), part=dayPart();
-    return state.history.filter(h=>h.type==='refused'&&h.taskId===t.id).reduce((n,h)=>{
+    return state.history.filter(h=>h.type===type&&h.taskId===t.id).reduce((n,h)=>{
       const c=h.context||{}; let match=0;
       if(Number(c.energy)===Number(energy))match+=2;
       if(timeBand(Number(c.time))===band)match+=2;
@@ -68,15 +68,19 @@
       return n+(match>=4?1:0);
     },0);
   }
+  function contextualRefusals(t,time,energy){return contextualHistoryCount(t,time,energy,'refused');}
+  function contextualAcceptances(t,time,energy){return contextualHistoryCount(t,time,energy,'accepted');}
   function scoreTask(t,time,energy){
     if(excludedThisRound.has(t.id)) return -9999;
     if(!isAvailable(t)) return -9999;
     if(t.duration>time && time<999) return -500-(t.duration-time);
     // v0.2.0 : un refus ne pénalise plus la tâche partout. Il compte surtout si le contexte ressemble au refus observé.
     const refusalPenalty=Math.min(8,contextualRefusals(t,time,energy)*2.2);
+    // v0.2.1 : une acceptation dans un contexte proche devient un signal positif, sans écraser urgence/importance.
+    const acceptanceBonus=Math.min(6,contextualAcceptances(t,time,energy)*1.8);
     const energyFit=t.effort<=energy?3:-(t.effort-energy)*3.5;
     const timeFit=time===999?1:Math.max(0,4-Math.abs(time-t.duration)/8);
-    return t.importance*4+t.urgency*4+energyFit+timeFit-refusalPenalty;
+    return t.importance*4+t.urgency*4+energyFit+timeFit+acceptanceBonus-refusalPenalty;
   }
   function reasonFor(t,time,energy){
     const bits=[];
@@ -115,7 +119,7 @@
     state.history.unshift({type:'done',taskId:t.id,name:t.name,at:now.toISOString(),context:{...state.context,dayPart:dayPart(now)},place:t.place||'',nextEligibleAt:t.blockedUntil||null});
     if(source==='accepted'&&t.blockedUntil)toast(`Fait. Je ne te le reproposerai pas avant le ${formatDate(t.blockedUntil)}.`);else if(source==='accepted')toast('Fait — enregistré, sans points ni série à conserver.');
   }
-  function accepted(){const t=currentTask();if(!t)return;markTaskDone(t,'accepted');excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();}
+  function accepted(){const t=currentTask();if(!t)return;const now=new Date();state.history.unshift({type:'accepted',taskId:t.id,name:t.name,at:now.toISOString(),context:{...state.context,dayPart:dayPart(now)},place:t.place||''});excludedThisRound.add(t.id);save();toast('D’accord. Je retiens que cette proposition te convient dans ce contexte.');renderLearning();chooseSuggestion();}
   function refused(){const t=currentTask();if(!t)return;const now=new Date();state.refusals[t.id]=(state.refusals[t.id]||0)+1;state.history.unshift({type:'refused',taskId:t.id,name:t.name,at:now.toISOString(),context:{...state.context,dayPart:dayPart(now)},place:t.place||''});excludedThisRound.add(t.id);save();toast('Compris. Je retiens surtout le contexte de ce refus.');renderLearning();chooseSuggestion();}
   function another(){const t=currentTask();if(t)excludedThisRound.add(t.id);chooseSuggestion();toast('Je cherche une autre proposition.');}
   function why(){const t=currentTask();if(!t)return;alert(`${t.name}\n\n${reasonFor(t,state.context.time,state.context.energy)}\n\nSi tu attends : ${t.consequence||'aucune conséquence renseignée.'}`);}
@@ -167,16 +171,27 @@
 
   function renderLearning(){
     const refused=state.history.filter(h=>h.type==='refused');
-    const recent=state.history.slice(0,10);
-    const groups={};
-    refused.forEach(h=>{const c=h.context||{};const key=[h.taskId,c.energy||'?',timeBand(Number(c.time)),c.dayPart||'moment inconnu',h.place||''].join('|');if(!groups[key])groups[key]={h,n:0};groups[key].n++;});
-    const signals=Object.values(groups).filter(g=>g.n>=2).sort((a,b)=>b.n-a.n);
+    const accepted=state.history.filter(h=>h.type==='accepted');
+    const recent=state.history.slice(0,12);
+    function groupedSignals(items){
+      const groups={};
+      items.forEach(h=>{const c=h.context||{};const key=[h.taskId,c.energy||'?',timeBand(Number(c.time)),c.dayPart||'moment inconnu',h.place||''].join('|');if(!groups[key])groups[key]={h,n:0};groups[key].n++;});
+      return Object.values(groups).filter(g=>g.n>=2).sort((a,b)=>b.n-a.n);
+    }
+    const acceptanceSignals=groupedSignals(accepted), refusalSignals=groupedSignals(refused);
+    const contextLine=g=>{const h=g.h,c=h.context||{};const temps=c.time===999?'temps libre':(c.time||'?')+' min';return `${escapeHtml(c.dayPart||'moment ?')} · ${temps} · énergie ${c.energy||'?'}/3${h.place?' · '+escapeHtml(h.place):''}`;};
     let html='<h3>Ce que je commence à comprendre</h3>';
-    if(!refused.length)html+='<p class="muted">Aucun refus observé pour l’instant. Avec « Pas envie », Djinn retiendra désormais le contexte plutôt que de dévaloriser la tâche partout.</p>';
-    else if(!signals.length)html+='<p class="muted">J’ai enregistré des refus, mais pas encore assez de répétitions dans un même contexte pour en tirer une habitude.</p>';
-    else html+=signals.slice(0,6).map(g=>{const h=g.h,c=h.context||{};const temps=c.time===999?'temps libre':(c.time||'?')+' min';return `<div class="learning-row"><strong>${escapeHtml(h.name)}</strong><div>${g.n} refus dans un contexte proche · ${escapeHtml(c.dayPart||'moment ?')} · ${temps} · énergie ${c.energy||'?'}/3${h.place?' · '+escapeHtml(h.place):''}. <span class="muted">Djinn évitera davantage cette proposition dans ce contexte, pas dans les autres.</span></div></div>`}).join('');
+    html+='<div class="learning-subtitle"><strong>👍 Contextes qui te conviennent</strong></div>';
+    if(!accepted.length)html+='<p class="muted">Aucune acceptation observée pour l’instant. « D’accord, je m’y mets » mémorise maintenant le contexte sans marquer la tâche comme faite.</p>';
+    else if(!acceptanceSignals.length)html+='<p class="muted">J’ai enregistré des acceptations, mais pas encore assez de répétitions dans un même contexte pour en tirer une habitude.</p>';
+    else html+=acceptanceSignals.slice(0,6).map(g=>`<div class="learning-row"><strong>${escapeHtml(g.h.name)}</strong><div>${g.n} acceptations dans un contexte proche · ${contextLine(g)}. <span class="muted">Djinn favorisera légèrement cette proposition dans un contexte semblable.</span></div></div>`).join('');
+    html+='<div class="learning-subtitle" style="margin-top:14px"><strong>☹ Contextes à éviter</strong></div>';
+    if(!refused.length)html+='<p class="muted">Aucun refus observé pour l’instant.</p>';
+    else if(!refusalSignals.length)html+='<p class="muted">J’ai enregistré des refus, mais pas encore assez de répétitions dans un même contexte pour en tirer une habitude.</p>';
+    else html+=refusalSignals.slice(0,6).map(g=>`<div class="learning-row"><strong>${escapeHtml(g.h.name)}</strong><div>${g.n} refus dans un contexte proche · ${contextLine(g)}. <span class="muted">Djinn évitera davantage cette proposition dans ce contexte, pas dans les autres.</span></div></div>`).join('');
     html+='<h3 style="margin-top:16px">Observations récentes</h3>';
-    html+=recent.length?recent.map(h=>`<div class="learning-row"><strong>${h.type==='done'?'✓ Fait':'☹ Pas envie'} — ${escapeHtml(h.name)}</strong><div class="muted">${new Date(h.at).toLocaleString('fr-FR')} · ${h.context?.dayPart||dayPart(new Date(h.at))} · ${h.context?.time===999?'temps libre':(h.context?.time||'?')+' min'} · énergie ${h.context?.energy||'?'}/3${h.place?' · '+escapeHtml(h.place):''}${h.nextEligibleAt?' · reproposable le '+formatDate(h.nextEligibleAt):''}</div></div>`).join(''):'<p class="muted">Aucune observation enregistrée pour l’instant.</p>';
+    const label={done:'✓ Fait',accepted:'👍 Accepté',refused:'☹ Pas envie'};
+    html+=recent.length?recent.map(h=>`<div class="learning-row"><strong>${label[h.type]||'• Observation'} — ${escapeHtml(h.name)}</strong><div class="muted">${new Date(h.at).toLocaleString('fr-FR')} · ${h.context?.dayPart||dayPart(new Date(h.at))} · ${h.context?.time===999?'temps libre':(h.context?.time||'?')+' min'} · énergie ${h.context?.energy||'?'}/3${h.place?' · '+escapeHtml(h.place):''}${h.nextEligibleAt?' · reproposable le '+formatDate(h.nextEligibleAt):''}</div></div>`).join(''):'<p class="muted">Aucune observation enregistrée pour l’instant.</p>';
     $('learningList').innerHTML=html;
   }
 
