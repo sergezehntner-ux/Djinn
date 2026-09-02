@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#6d477c">
   <meta name="description" content="Djinn — aide intuitive au quotidien, local-first.">
-  <title>Djinn v0.2.2</title>
+  <title>Djinn v0.2.3</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=0220">
+  <link rel="stylesheet" href="styles.css?v=0230">
 </head>
 <body>
   <header class="app-header">
@@ -18,7 +18,7 @@
       <div>
         <h1>Djinn</h1>
         <div class="tagline">Votre quotidien, sans la charge mentale</div>
-        <small>v0.2.2 · Programme</small>
+        <small>v0.2.3 · Programme</small>
       </div>
     </div>
     <div id="lastAction" class="last-action">Dernière action : aucun export/import</div>
@@ -55,7 +55,7 @@
       </div>
 
       <section class="card today-program-card">
-        <div class="program-head"><div><div class="eyebrow">📌 Mon programme pour aujourd’hui</div><p class="muted">Tes choix restent ici jusqu’à ce qu’ils soient faits ou repoussés.</p></div><button id="personalChoice" class="secondary small">Choix personnel</button></div>
+        <div class="program-head"><div><div class="eyebrow">📌 Mon programme pour aujourd’hui</div><p class="muted">Tes choix restent visibles ici pendant toute la journée.</p></div><button id="personalChoice" class="secondary small">Choix personnel</button></div>
         <div id="personalChoicePanel" class="personal-choice-panel hidden"><label>Choisir parmi mes tâches<input id="personalChoiceSearch" type="search" autocomplete="off" placeholder="Commence à écrire, p. ex. rep…"></label><div id="personalChoiceResults" class="choice-results"></div></div>
         <div id="todayProgram" class="today-program"></div>
       </section>
@@ -136,9 +136,9 @@
 
   <div id="temporalModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="temporalTitle"><div class="modal-card compact-modal"><div class="modal-head"><div><div class="eyebrow">↻ Temporalité</div><h2 id="temporalTitle">À reproposer après</h2></div><button id="closeTemporal" class="icon-btn" aria-label="Fermer">✕</button></div><label class="number-prompt">Nombre<input id="temporalNumber" type="number" min="1" max="999" inputmode="numeric" value="1"></label><div class="actions"><button id="saveTemporal" class="primary">Valider</button><button id="cancelTemporal" class="secondary">Annuler</button></div></div></div>
 
-  <div id="taskDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">📝 Tâche</div><h2 id="detailTitle">Tâche</h2></div><button id="closeTaskDetail" class="icon-btn" aria-label="Fermer">✕</button></div><div id="taskDetailBody"></div><div class="actions"><button id="detailDone" class="primary">✓ Fait</button><button id="detailClose" class="secondary">Retour</button></div></div></div>
+  <div id="taskDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">📝 Tâche</div><h2 id="detailTitle">Tâche</h2></div><button id="closeTaskDetail" class="icon-btn" aria-label="Fermer">✕</button></div><div id="taskDetailBody"></div><div class="actions"><button id="detailClose" class="secondary">Retour</button></div></div></div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0220"></script>
+  <script src="app.js?v=0230"></script>
 </body>
 </html>

@@ -90,3 +90,22 @@ p{line-height:1.4;margin:.55rem 0}
 /* v0.2.2 — programme du jour et historique par tâche */
 .today-program-card{margin-top:10px;padding:13px 15px}.program-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.program-head p{margin:.25rem 0 0}.today-program{display:grid;gap:7px;margin-top:9px}.program-item{border:1px solid var(--line);border-radius:12px;padding:9px 10px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:10px}.program-item>div:first-child{display:grid;gap:2px}.program-item span{font-size:.86rem;color:var(--muted)}.program-actions{display:flex;gap:6px;flex-wrap:wrap}.program-empty{margin:3px 0}.personal-choice-panel{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.personal-choice-panel label{display:grid;gap:5px;font-weight:750}.choice-results{display:grid;gap:5px;margin-top:6px}.choice-result{width:100%;border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 10px;text-align:left;display:flex;justify-content:space-between;gap:10px}.choice-result span{color:var(--muted);font-size:.86rem}.history-title{margin:16px 0 7px}.task-history{display:grid;gap:5px}.task-history-row{display:flex;justify-content:space-between;gap:12px;padding:7px 9px;border-radius:9px;background:#f8f4f9}.task-history-row span{color:var(--muted);font-size:.86rem;text-align:right}
 @media(max-width:620px){.today-program-card{padding:11px 12px}.program-head{align-items:center}.program-head .small{white-space:nowrap}.program-item{align-items:flex-start;flex-direction:column}.program-actions{width:100%}.program-actions>*{flex:1}.choice-result{flex-direction:column;gap:2px}.task-history-row{flex-direction:column;gap:2px}.task-history-row span{text-align:left}}
+
+/* v0.2.3 — programme du jour, états visibles et historique corrigeable */
+.program-item.program-done-state{opacity:.72;background:#f6f3f5}
+.program-item.program-done-state strong{text-decoration:line-through;text-decoration-thickness:2px}
+.program-item.program-postponed-state{opacity:.72;background:#faf7ef}
+.program-item.program-postponed-state strong{font-style:italic}
+.program-state-label{display:inline-flex;align-items:center;min-height:34px;padding:6px 10px;border-radius:9px;background:#f2ebf4;color:#68506f;font-weight:800}
+.task-history-row.history-cancelled{opacity:.55}
+.task-history-row.history-cancelled strong{text-decoration:line-through}
+.task-history-row>div:first-child{display:grid;gap:2px}
+.task-history-row small{color:var(--muted);font-size:.75rem}
+.history-row-right{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.history-cancel-btn{border:1px solid #ded4e1;background:#fff;border-radius:8px;padding:5px 8px;color:#6b4a73;font-size:.78rem;white-space:nowrap}
+.history-correction{margin-top:16px;padding-top:13px;border-top:1px solid var(--line)}
+.history-correction h3{margin:0 0 3px}
+.history-correction p{margin:.2rem 0 .7rem}
+.history-correction-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:9px;margin-bottom:9px}
+.history-correction-grid label{display:grid;gap:4px;font-weight:750}
+@media(max-width:620px){.history-row-right{justify-content:flex-start;flex-wrap:wrap}.history-correction-grid{grid-template-columns:1fr}}

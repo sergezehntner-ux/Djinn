@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -21,9 +21,16 @@
   const navButtons = [...document.querySelectorAll('.nav-btn')];
 
   function cloneSeed(){ return JSON.parse(JSON.stringify(seedTasks)); }
-  function todayKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-  function ensureTodayProgram(st=state){if(!st.todayProgram||st.todayProgram.date!==todayKey())st.todayProgram={date:todayKey(),taskIds:[]};if(!Array.isArray(st.todayProgram.taskIds))st.todayProgram.taskIds=[];st.todayProgram.taskIds=st.todayProgram.taskIds.filter(id=>st.tasks.some(t=>t.id===id));}
-  function defaultState(){return {tasks:cloneSeed(),history:[],refusals:{},context:{time:20,energy:2},smartMemory:{places:[]},todayProgram:{date:todayKey(),taskIds:[]},lastTransferAction:'Aucun export/import'};}
+  function todayKey(date=new Date()){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
+  function eventId(){return 'e'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+  function normalizeTodayProgram(st=state){
+    if(!st.todayProgram)st.todayProgram={date:todayKey(),entries:[]};
+    if(Array.isArray(st.todayProgram.taskIds)&&!Array.isArray(st.todayProgram.entries)){st.todayProgram.entries=st.todayProgram.taskIds.map(taskId=>({taskId,status:'active',origin:'legacy',addedAt:new Date().toISOString()}));delete st.todayProgram.taskIds;}
+    if(!Array.isArray(st.todayProgram.entries))st.todayProgram.entries=[];
+    st.todayProgram.entries=st.todayProgram.entries.filter(e=>e&&st.tasks.some(t=>t.id===e.taskId)).map(e=>({status:'active',origin:'unknown',addedAt:new Date().toISOString(),...e}));
+    if(!st.todayProgram.date)st.todayProgram.date=todayKey();
+  }
+  function defaultState(){return {tasks:cloneSeed(),history:[],refusals:{},context:{time:20,energy:2},smartMemory:{places:[]},todayProgram:{date:todayKey(),entries:[]},lastTransferAction:'Aucun export/import'};}
   function normalizeTask(t){return {place:'',repeatValue:0,repeatUnit:'none',blockedUntil:null,lastDoneAt:null,done:false,events:[],...t,events:Array.isArray(t.events)?t.events:[]};}
   function load(){
     try{
@@ -34,13 +41,14 @@
       if(!merged.lastTransferAction) merged.lastTransferAction='Aucun export/import';
       merged.smartMemory={places:[],...(parsed.smartMemory||{})};
       merged.tasks.forEach(t=>rememberSmart('places',t.place,merged));
-      ensureTodayProgram(merged);
+      normalizeTodayProgram(merged);
       // Migration douce : l'ancien historique devient aussi consultable dans chaque tâche.
-      (merged.history||[]).forEach(h=>{const t=merged.tasks.find(x=>x.id===h.taskId);if(t&&!t.events.some(e=>e.at===h.at&&e.type===h.type))t.events.push({...h});});
+      (merged.history||[]).forEach(h=>{if(!h.id)h.id=eventId();const t=merged.tasks.find(x=>x.id===h.taskId);if(t){const existing=t.events.find(e=>(e.id&&e.id===h.id)||(!e.id&&e.at===h.at&&e.type===h.type));if(existing){if(!existing.id)existing.id=h.id;if(existing.cancelled==null)existing.cancelled=!!h.cancelled;}else t.events.push({...h});}});
+      merged.tasks.forEach(t=>(t.events||[]).forEach(e=>{if(!e.id)e.id=eventId();if(e.cancelled==null)e.cancelled=false;}));
       return merged;
     }catch(e){return defaultState();}
   }
-  function save(){ensureTodayProgram();localStorage.setItem(KEY,JSON.stringify(state));renderHeader();renderStats();renderBackupInfo();renderTodayProgram();}
+  function save(){rolloverTodayProgram();normalizeTodayProgram();localStorage.setItem(KEY,JSON.stringify(state));renderHeader();renderStats();renderBackupInfo();renderTodayProgram();}
   function nowLabel(){return new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
   function renderHeader(){$('lastAction').textContent=`Dernière action : ${state.lastTransferAction||'Aucun export/import'}`;}
   function renderBackupInfo(){$('backupInfo').textContent=`Dernière action : ${state.lastTransferAction||'Aucun export/import'}`;}
@@ -64,7 +72,7 @@
   function dayPart(date=new Date()){const h=date.getHours();if(h<11)return 'matin';if(h<14)return 'midi';if(h<18)return 'après-midi';return 'soir';}
   function contextualHistoryCount(t,time,energy,type){
     const band=timeBand(time), part=dayPart();
-    return state.history.filter(h=>h.type===type&&h.taskId===t.id).reduce((n,h)=>{
+    return state.history.filter(h=>!h.cancelled&&h.type===type&&h.taskId===t.id).reduce((n,h)=>{
       const c=h.context||{}; let match=0;
       if(Number(c.energy)===Number(energy))match+=2;
       if(timeBand(Number(c.time))===band)match+=2;
@@ -118,29 +126,34 @@
   function currentTask(){return state.tasks.find(t=>t.id===currentSuggestionId);}
 
   function eventContext(now=new Date()){return {...state.context,dayPart:dayPart(now)};}
-  function recordTaskEvent(t,type,extra={}){const now=extra.at?new Date(extra.at):new Date();const ev={type,taskId:t.id,name:t.name,at:now.toISOString(),context:eventContext(now),place:t.place||'',...extra};t.events=Array.isArray(t.events)?t.events:[];t.events.unshift(ev);state.history.unshift({...ev});return ev;}
-  function inTodayProgram(id){ensureTodayProgram();return state.todayProgram.taskIds.includes(id);}
-  function addToTodayProgram(t,origin){ensureTodayProgram();if(!inTodayProgram(t.id))state.todayProgram.taskIds.push(t.id);recordTaskEvent(t,origin==='personal'?'personal':'accepted',{origin});}
-  function removeFromTodayProgram(id){ensureTodayProgram();state.todayProgram.taskIds=state.todayProgram.taskIds.filter(x=>x!==id);}
+  function recordTaskEvent(t,type,extra={}){const now=extra.at?new Date(extra.at):new Date();const ev={id:eventId(),type,taskId:t.id,name:t.name,at:now.toISOString(),context:eventContext(now),place:t.place||'',cancelled:false,...extra};t.events=Array.isArray(t.events)?t.events:[];t.events.unshift(ev);state.history.unshift({...ev});return ev;}
+  function programEntry(id){normalizeTodayProgram();return state.todayProgram.entries.find(e=>e.taskId===id);}
+  function inTodayProgram(id){const e=programEntry(id);return !!e&&e.status!=='postponed';}
+  function addToTodayProgram(t,origin){rolloverTodayProgram();normalizeTodayProgram();let e=programEntry(t.id);if(!e){e={taskId:t.id,status:'active',origin,addedAt:new Date().toISOString()};state.todayProgram.entries.push(e);}else{e.status='active';e.origin=origin;e.addedAt=new Date().toISOString();delete e.doneEventId;delete e.postponedEventId;}recordTaskEvent(t,origin==='personal'?'personal':'accepted',{origin});}
+  function dayEndIso(key){const [y,m,d]=String(key).split('-').map(Number);return new Date(y,m-1,d,23,59,59,999).toISOString();}
+  function rolloverTodayProgram(){normalizeTodayProgram();const nowKey=todayKey();if(state.todayProgram.date===nowKey)return false;const oldDate=state.todayProgram.date;state.todayProgram.entries.forEach(e=>{if(e.status!=='active')return;const t=state.tasks.find(x=>x.id===e.taskId);if(t)recordTaskEvent(t,'non_realized',{at:dayEndIso(oldDate),programDate:oldDate,automatic:true});});state.todayProgram={date:nowKey,entries:[]};return true;}
+  function setEventCancelled(t,eventIdValue,cancelled=true){const te=(t.events||[]).find(e=>e.id===eventIdValue);if(te)te.cancelled=cancelled;const he=(state.history||[]).find(e=>e.id===eventIdValue);if(he)he.cancelled=cancelled;}
+  function recomputeTaskCompletion(t){const doneEvents=(t.events||[]).filter(e=>e.type==='done'&&!e.cancelled).sort((a,b)=>new Date(b.at)-new Date(a.at));const latest=doneEvents[0];if(!latest){t.done=false;t.blockedUntil=null;t.lastDoneAt=null;delete t.doneAt;return;}const when=new Date(latest.at);t.lastDoneAt=when.toISOString();if(hasTemporalite(t)){t.done=false;t.blockedUntil=addPeriod(when,t.repeatValue,t.repeatUnit).toISOString();if(new Date(t.blockedUntil)<=new Date())t.blockedUntil=null;}else{t.done=true;t.doneAt=when.toISOString();t.blockedUntil=null;}}
 
-  function markTaskDone(t,source='done'){
-    const now=new Date();t.lastDoneAt=now.toISOString();
-    if(hasTemporalite(t)){t.done=false;t.blockedUntil=addPeriod(now,t.repeatValue,t.repeatUnit).toISOString();}
+  function markTaskDone(t,source='program',at=null){
+    const now=at?new Date(at):new Date();const before={done:!!t.done,blockedUntil:t.blockedUntil||null,lastDoneAt:t.lastDoneAt||null,doneAt:t.doneAt||null};t.lastDoneAt=now.toISOString();
+    if(hasTemporalite(t)){t.done=false;t.blockedUntil=addPeriod(now,t.repeatValue,t.repeatUnit).toISOString();delete t.doneAt;}
     else{t.done=true;t.doneAt=now.toISOString();t.blockedUntil=null;}
-    recordTaskEvent(t,'done',{at:now.toISOString(),nextEligibleAt:t.blockedUntil||null,source});removeFromTodayProgram(t.id);
-    if(source==='accepted'&&t.blockedUntil)toast(`Fait. Je ne te le reproposerai pas avant le ${formatDate(t.blockedUntil)}.`);else if(source==='accepted')toast('Fait — enregistré, sans points ni série à conserver.');
+    return recordTaskEvent(t,'done',{at:now.toISOString(),nextEligibleAt:t.blockedUntil||null,source,before});
   }
+  function undoProgramDone(t,e){if(!e||e.status!=='done')return;const doneEvent=(t.events||[]).find(ev=>ev.id===e.doneEventId);if(doneEvent)setEventCancelled(t,doneEvent.id,true);recomputeTaskCompletion(t);recordTaskEvent(t,'cancelled',{targetType:'done',targetEventId:e.doneEventId,source:'program'});e.status='active';delete e.doneEventId;}
   function accepted(){const t=currentTask();if(!t)return;if(!inTodayProgram(t.id))addToTodayProgram(t,'suggestion');excludedThisRound.add(t.id);save();toast('Ajouté à « Mon programme pour aujourd’hui ».');renderLearning();chooseSuggestion();}
   function refused(){const t=currentTask();if(!t)return;state.refusals[t.id]=(state.refusals[t.id]||0)+1;recordTaskEvent(t,'refused');excludedThisRound.add(t.id);save();toast('Compris. Je retiens surtout le contexte de ce refus.');renderLearning();chooseSuggestion();}
   function another(){const t=currentTask();if(t)excludedThisRound.add(t.id);chooseSuggestion();toast('Je cherche une autre proposition.');}
   function why(){const t=currentTask();if(!t)return;alert(`${t.name}\n\n${reasonFor(t,state.context.time,state.context.energy)}\n\nSi tu attends : ${t.consequence||'aucune conséquence renseignée.'}`);}
 
   function renderTodayProgram(){
-    const box=$('todayProgram');if(!box)return;ensureTodayProgram();
-    const tasks=state.todayProgram.taskIds.map(id=>state.tasks.find(t=>t.id===id)).filter(Boolean);
-    box.innerHTML=tasks.length?tasks.map(t=>`<article class="program-item" data-id="${t.id}"><div><strong>${escapeHtml(t.name)}</strong><span>≈ ${t.duration} min${t.place?' · 📍 '+escapeHtml(t.place):''}</span></div><div class="program-actions"><button class="primary small program-done">✓ Fait</button><button class="secondary small program-postpone">Repousser</button></div></article>`).join(''):'<p class="muted program-empty">Rien de choisi pour l’instant. Tu peux accepter une suggestion ou faire un « Choix personnel ».</p>';
-    box.querySelectorAll('.program-done').forEach(b=>b.onclick=()=>{const t=state.tasks.find(x=>x.id===b.closest('.program-item').dataset.id);if(!t)return;markTaskDone(t,'program');save();excludedThisRound.clear();renderTasks();renderLearning();chooseSuggestion();toast(t.blockedUntil?`Fait. À reproposer après le ${formatDate(t.blockedUntil)}.`:'Fait. La durée était-elle à peu près juste ? Sinon, modifie-la dans la tâche.');});
-    box.querySelectorAll('.program-postpone').forEach(b=>b.onclick=()=>{const t=state.tasks.find(x=>x.id===b.closest('.program-item').dataset.id);if(!t)return;recordTaskEvent(t,'postponed');removeFromTodayProgram(t.id);save();excludedThisRound.clear();renderLearning();chooseSuggestion();toast('Repoussé. Je garde aussi cette décision en mémoire.');});
+    const box=$('todayProgram');if(!box)return;rolloverTodayProgram();normalizeTodayProgram();
+    const items=state.todayProgram.entries.map(e=>({e,t:state.tasks.find(t=>t.id===e.taskId)})).filter(x=>x.t);
+    box.innerHTML=items.length?items.map(({e,t})=>{const done=e.status==='done',post=e.status==='postponed';return `<article class="program-item ${done?'program-done-state':''} ${post?'program-postponed-state':''}" data-id="${t.id}"><div><strong>${escapeHtml(t.name)}</strong><span>≈ ${t.duration} min${t.place?' · 📍 '+escapeHtml(t.place):''}${done?' · Fait':post?' · Repoussé':''}</span></div><div class="program-actions">${done?'<button class="secondary small program-undo">↶ Annuler</button>':post?'<span class="program-state-label">Repoussé</span>':'<button class="primary small program-done">✓ Fait</button><button class="secondary small program-postpone">Repousser</button>'}</div></article>`;}).join(''):'<p class="muted program-empty">Rien de choisi pour l’instant. Tu peux accepter une suggestion ou faire un « Choix personnel ».</p>';
+    box.querySelectorAll('.program-done').forEach(b=>b.onclick=()=>{const row=b.closest('.program-item'),t=state.tasks.find(x=>x.id===row.dataset.id),e=programEntry(row.dataset.id);if(!t||!e)return;const ev=markTaskDone(t,'program');e.status='done';e.doneEventId=ev.id;save();excludedThisRound.clear();renderTasks();renderLearning();chooseSuggestion();toast(t.blockedUntil?`Fait. À reproposer après le ${formatDate(t.blockedUntil)}.`:'Fait. La durée était-elle à peu près juste ? Sinon, modifie-la dans la tâche.');});
+    box.querySelectorAll('.program-undo').forEach(b=>b.onclick=()=>{const row=b.closest('.program-item'),t=state.tasks.find(x=>x.id===row.dataset.id),e=programEntry(row.dataset.id);if(!t||!e)return;undoProgramDone(t,e);save();excludedThisRound.clear();renderTasks();renderLearning();chooseSuggestion();toast('« Fait » annulé. La tâche reste dans ton programme.');});
+    box.querySelectorAll('.program-postpone').forEach(b=>b.onclick=()=>{const row=b.closest('.program-item'),t=state.tasks.find(x=>x.id===row.dataset.id),e=programEntry(row.dataset.id);if(!t||!e)return;const ev=recordTaskEvent(t,'postponed',{source:'program'});e.status='postponed';e.postponedEventId=ev.id;save();excludedThisRound.clear();renderLearning();chooseSuggestion();toast('Repoussé. Je garde aussi cette décision en mémoire.');});
   }
   function renderPersonalChoiceResults(){const q=$('personalChoiceSearch').value.trim().toLocaleLowerCase('fr');const box=$('personalChoiceResults');let tasks=state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id));if(q)tasks=tasks.filter(t=>t.name.toLocaleLowerCase('fr').includes(q));tasks.sort((a,b)=>a.name.localeCompare(b.name,'fr',{sensitivity:'base'}));if(!q){box.innerHTML='<div class="smart-empty">Commence à écrire le nom d’une tâche.</div>';return;}box.innerHTML=tasks.length?tasks.slice(0,8).map(t=>`<button class="choice-result" data-id="${t.id}"><strong>${escapeHtml(t.name)}</strong><span>≈ ${t.duration} min${t.place?' · '+escapeHtml(t.place):''}</span></button>`).join(''):'<div class="smart-empty">Aucune tâche correspondante disponible.</div>';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{const t=state.tasks.find(x=>x.id===b.dataset.id);if(!t)return;addToTodayProgram(t,'personal');save();$('personalChoiceSearch').value='';$('personalChoicePanel').classList.add('hidden');renderLearning();chooseSuggestion();toast(`« ${t.name} » ajouté à ton programme.`);});}
   function togglePersonalChoice(){const panel=$('personalChoicePanel');panel.classList.toggle('hidden');if(!panel.classList.contains('hidden')){renderPersonalChoiceResults();setTimeout(()=>$('personalChoiceSearch').focus(),0);}}
@@ -154,9 +167,9 @@
     refreshSmartLists();const box=$('taskList');const tasks=filteredTasks();if(!tasks.length){box.innerHTML='<div class="card">Aucune tâche ne correspond au filtre.</div>';return;}
     box.innerHTML=tasks.map(t=>{
       const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';
-      return `<article class="task-card ${status}" data-id="${t.id}"><div><h3>${t.done?'✓ ':''}${escapeHtml(t.name)}</h3><div class="task-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="task-status">${statusText}</div><p class="muted">${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p></div><div class="task-actions"><button class="icon-btn history-task">Historique</button><button class="icon-btn edit-task">Modifier</button><button class="icon-btn toggle-task">${status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'Fait'}</button><button class="icon-btn delete-task">Supprimer</button></div></article>`;
+      return `<article class="task-card ${status}" data-id="${t.id}"><div><h3>${t.done?'✓ ':''}${escapeHtml(t.name)}</h3><div class="task-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="task-status">${statusText}</div><p class="muted">${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p></div><div class="task-actions"><button class="icon-btn history-task">Historique</button><button class="icon-btn edit-task">Modifier</button><button class="icon-btn delete-task">Supprimer</button></div></article>`;
     }).join('');
-    box.querySelectorAll('.history-task').forEach(b=>b.onclick=()=>openTaskFromMind(b.closest('.task-card').dataset.id));box.querySelectorAll('.edit-task').forEach(b=>b.onclick=()=>editTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.toggle-task').forEach(b=>b.onclick=()=>toggleTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.delete-task').forEach(b=>b.onclick=()=>deleteTask(b.closest('.task-card').dataset.id));
+    box.querySelectorAll('.history-task').forEach(b=>b.onclick=()=>openTaskFromMind(b.closest('.task-card').dataset.id));box.querySelectorAll('.edit-task').forEach(b=>b.onclick=()=>editTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.delete-task').forEach(b=>b.onclick=()=>deleteTask(b.closest('.task-card').dataset.id));
   }
   function alphaSort(a,b){return a.localeCompare(b,'fr',{sensitivity:'base'});}
   function rememberSmart(kind,value,targetState=state){const v=String(value||'').trim();if(!v)return;targetState.smartMemory=targetState.smartMemory||{};targetState.smartMemory[kind]=targetState.smartMemory[kind]||[];if(!targetState.smartMemory[kind].some(x=>x.localeCompare(v,'fr',{sensitivity:'base'})===0))targetState.smartMemory[kind].push(v);targetState.smartMemory[kind].sort(alphaSort);}
@@ -182,18 +195,26 @@
     save();$('taskForm').classList.add('hidden');excludedThisRound.clear();renderTasks();chooseSuggestion();
     const backId=returnToTaskId||targetId;returnToTaskId=null;requestAnimationFrame(()=>{const el=document.querySelector(`.task-card[data-id="${backId}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600);}});
   }
-  function toggleTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;if(isWaiting(t)){t.blockedUntil=null;t.done=false;toast('Cette tâche est de nouveau proposable maintenant.');}else if(t.done){t.done=false;delete t.doneAt;toast('Tâche réactivée.');}else{markTaskDone(t,'manual');if(t.blockedUntil)toast(`Fait. À reproposer après le ${formatDate(t.blockedUntil)}.`);else toast('Tâche marquée comme faite.');}save();excludedThisRound.clear();renderTasks();chooseSuggestion();}
   function deleteTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;if(!confirm(`Supprimer « ${t.name} » ?`))return;state.tasks=state.tasks.filter(x=>x.id!==id);save();excludedThisRound.clear();renderTasks();chooseSuggestion();}
   let detailTaskId=null;
-  function openTaskFromMind(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;detailTaskId=id;const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';const labels={done:'✓ Fait',accepted:'👍 Je m’y mets',refused:'☹ Pas envie',personal:'👤 Choix personnel',postponed:'↪ Repoussé'};const hist=(t.events||[]).slice().sort((a,b)=>new Date(b.at)-new Date(a.at));const histHtml=hist.length?hist.map(e=>`<div class="task-history-row"><strong>${labels[e.type]||escapeHtml(e.type)}</strong><span>${new Date(e.at).toLocaleString('fr-FR')}</span></div>`).join(''):'<p class="muted">Aucune action enregistrée pour cette tâche.</p>';$('detailTitle').textContent=t.name;$('taskDetailBody').innerHTML=`<div class="detail-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="detail-status">${statusText}</div><p>${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p><h3 class="history-title">Historique de cette tâche</h3><div class="task-history">${histHtml}</div>`;$('detailDone').textContent=status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'✓ Fait';$('taskDetailModal').classList.remove('hidden');}
+  const eventLabels={done:'✓ Fait',accepted:'👍 Je m’y mets',refused:'☹ Pas envie',personal:'👤 Choix personnel',postponed:'↪ Repoussé',cancelled:'↶ Annulé',non_realized:'○ Non réalisé'};
+  function localInputValue(date=new Date()){const off=date.getTimezoneOffset()*60000;return new Date(date.getTime()-off).toISOString().slice(0,16);}
+  function cancelHistoryEvent(t,eventIdValue){const ev=(t.events||[]).find(e=>e.id===eventIdValue);if(!ev||ev.cancelled)return;setEventCancelled(t,eventIdValue,true);recordTaskEvent(t,'cancelled',{targetType:ev.type,targetEventId:eventIdValue,source:'history_correction'});if(ev.type==='done')recomputeTaskCompletion(t);save();renderLearning();renderTasks();openTaskFromMind(t.id);toast('Action annulée dans l’historique.');}
+  function addHistoryCorrection(t){const type=$('historyCorrectionType')?.value;const raw=$('historyCorrectionAt')?.value;if(!type||!raw)return;const at=new Date(raw);if(Number.isNaN(at.getTime())){toast('Choisis une date valide.');return;}if(type==='done'){(t.events||[]).filter(e=>e.type==='non_realized'&&!e.cancelled&&todayKey(new Date(e.at))===todayKey(at)).forEach(e=>setEventCancelled(t,e.id,true));markTaskDone(t,'history_correction',at.toISOString());}else recordTaskEvent(t,type,{at:at.toISOString(),source:'history_correction',manual:true});recomputeTaskCompletion(t);save();renderLearning();renderTasks();openTaskFromMind(t.id);toast('Correction ajoutée à l’historique.');}
+  function openTaskFromMind(id){
+    const t=state.tasks.find(x=>x.id===id);if(!t)return;detailTaskId=id;const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';
+    const hist=(t.events||[]).slice().sort((a,b)=>new Date(b.at)-new Date(a.at));
+    const histHtml=hist.length?hist.map(e=>`<div class="task-history-row ${e.cancelled?'history-cancelled':''}"><div><strong>${eventLabels[e.type]||escapeHtml(e.type)}${e.cancelled?' — annulé':''}</strong>${e.source==='history_correction'?'<small>Correction manuelle</small>':''}</div><div class="history-row-right"><span>${new Date(e.at).toLocaleString('fr-FR')}</span>${!e.cancelled&&e.type!=='cancelled'?`<button class="history-cancel-btn" data-event-id="${e.id}">Annuler</button>`:''}</div></div>`).join(''):'<p class="muted">Aucune action enregistrée pour cette tâche.</p>';
+    $('detailTitle').textContent=t.name;$('taskDetailBody').innerHTML=`<div class="detail-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="detail-status">${statusText}</div><p>${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p><h3 class="history-title">Historique de cette tâche</h3><div class="task-history">${histHtml}</div><div class="history-correction"><h3>Corriger / compléter l’historique</h3><p class="muted">Utile si tu as oublié hier de noter une action. 😉</p><div class="history-correction-grid"><label>Action<select id="historyCorrectionType"><option value="done">Fait</option><option value="postponed">Repoussé</option><option value="refused">Pas envie</option><option value="accepted">Je m’y mets</option><option value="personal">Choix personnel</option><option value="non_realized">Non réalisé</option></select></label><label>Date et heure<input id="historyCorrectionAt" type="datetime-local" value="${localInputValue()}"></label></div><button id="addHistoryCorrection" class="secondary small">Ajouter la correction</button></div>`;
+    $('taskDetailBody').querySelectorAll('.history-cancel-btn').forEach(b=>b.onclick=()=>cancelHistoryEvent(t,b.dataset.eventId));$('addHistoryCorrection').onclick=()=>addHistoryCorrection(t);$('taskDetailModal').classList.remove('hidden');
+  }
   function closeTaskDetail(){$('taskDetailModal').classList.add('hidden');detailTaskId=null;}
-  function detailToggle(){if(!detailTaskId)return;toggleTask(detailTaskId);closeTaskDetail();}
 
 
   function renderLearning(){
-    const refused=state.history.filter(h=>h.type==='refused');
-    const accepted=state.history.filter(h=>h.type==='accepted');
-    const recent=state.history.slice(0,12);
+    const refused=state.history.filter(h=>!h.cancelled&&h.type==='refused');
+    const accepted=state.history.filter(h=>!h.cancelled&&h.type==='accepted');
+    const recent=state.history.filter(h=>!h.cancelled).slice(0,12);
     function groupedSignals(items){
       const groups={};
       items.forEach(h=>{const c=h.context||{};const key=[h.taskId,c.energy||'?',timeBand(Number(c.time)),c.dayPart||'moment inconnu',h.place||''].join('|');if(!groups[key])groups[key]={h,n:0};groups[key].n++;});
@@ -211,16 +232,16 @@
     else if(!refusalSignals.length)html+='<p class="muted">J’ai enregistré des refus, mais pas encore assez de répétitions dans un même contexte pour en tirer une habitude.</p>';
     else html+=refusalSignals.slice(0,6).map(g=>`<div class="learning-row"><strong>${escapeHtml(g.h.name)}</strong><div>${g.n} refus dans un contexte proche · ${contextLine(g)}. <span class="muted">Djinn évitera davantage cette proposition dans ce contexte, pas dans les autres.</span></div></div>`).join('');
     html+='<h3 style="margin-top:16px">Observations récentes</h3>';
-    const label={done:'✓ Fait',accepted:'👍 Je m’y mets',refused:'☹ Pas envie',personal:'👤 Choix personnel',postponed:'↪ Repoussé'};
+    const label={done:'✓ Fait',accepted:'👍 Je m’y mets',refused:'☹ Pas envie',personal:'👤 Choix personnel',postponed:'↪ Repoussé',cancelled:'↶ Annulé',non_realized:'○ Non réalisé'};
     html+=recent.length?recent.map(h=>`<div class="learning-row"><strong>${label[h.type]||'• Observation'} — ${escapeHtml(h.name)}</strong><div class="muted">${new Date(h.at).toLocaleString('fr-FR')} · ${h.context?.dayPart||dayPart(new Date(h.at))} · ${h.context?.time===999?'temps libre':(h.context?.time||'?')+' min'} · énergie ${h.context?.energy||'?'}/3${h.place?' · '+escapeHtml(h.place):''}${h.nextEligibleAt?' · reproposable le '+formatDate(h.nextEligibleAt):''}</div></div>`).join(''):'<p class="muted">Aucune observation enregistrée pour l’instant.</p>';
     $('learningList').innerHTML=html;
   }
 
-  function renderStats(){const done=state.history.filter(h=>h.type==='done').length;const refus=state.history.filter(h=>h.type==='refused').length;$('taskCount').textContent=state.tasks.filter(isAvailable).length;$('doneCount').textContent=done;$('refusalCount').textContent=refus;}
+  function renderStats(){const done=state.history.filter(h=>!h.cancelled&&h.type==='done').length;const refus=state.history.filter(h=>!h.cancelled&&h.type==='refused').length;$('taskCount').textContent=state.tasks.filter(isAvailable).length;$('doneCount').textContent=done;$('refusalCount').textContent=refus;}
   function setView(id){views.forEach(v=>v.classList.toggle('active',v.id===id));navButtons.forEach(b=>b.classList.toggle('active',b.dataset.view===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='tasks')renderTasks();if(id==='learning')renderLearning();}
 
   function exportData(){const payload={app:'Djinn',version:VERSION,exportedAt:new Date().toISOString(),state};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);const stamp=new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);a.download=`Djinn_${stamp}.djinnbak`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);state.lastTransferAction=`Export ${a.download} · ${nowLabel()}`;save();toast('Sauvegarde exportée.');}
-  function importData(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);const incoming=parsed.state||parsed;if(!incoming||!Array.isArray(incoming.tasks))throw new Error('format');if(!confirm(`Importer « ${file.name} » et remplacer les données locales actuelles ?`))return;state={...defaultState(),...incoming,tasks:incoming.tasks.map(normalizeTask),smartMemory:{places:[],...(incoming.smartMemory||{})}};state.tasks.forEach(t=>rememberSmart('places',t.place));ensureTodayProgram();(state.history||[]).forEach(h=>{const t=state.tasks.find(x=>x.id===h.taskId);if(t&&!t.events.some(e=>e.at===h.at&&e.type===h.type))t.events.push({...h});});state.lastTransferAction=`Import ${file.name} · ${nowLabel()}`;excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Sauvegarde importée.');}catch(e){alert('Ce fichier ne semble pas être une sauvegarde Djinn valide.');}finally{$('importFile').value='';}};reader.readAsText(file);}
+  function importData(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);const incoming=parsed.state||parsed;if(!incoming||!Array.isArray(incoming.tasks))throw new Error('format');if(!confirm(`Importer « ${file.name} » et remplacer les données locales actuelles ?`))return;state={...defaultState(),...incoming,tasks:incoming.tasks.map(normalizeTask),smartMemory:{places:[],...(incoming.smartMemory||{})}};state.tasks.forEach(t=>rememberSmart('places',t.place));normalizeTodayProgram();(state.history||[]).forEach(h=>{if(!h.id)h.id=eventId();const t=state.tasks.find(x=>x.id===h.taskId);if(t&&!t.events.some(e=>(e.id&&e.id===h.id)||(!e.id&&e.at===h.at&&e.type===h.type)))t.events.push({...h});});state.tasks.forEach(t=>(t.events||[]).forEach(e=>{if(!e.id)e.id=eventId();if(e.cancelled==null)e.cancelled=false;}));rolloverTodayProgram();state.lastTransferAction=`Import ${file.name} · ${nowLabel()}`;excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Sauvegarde importée.');}catch(e){alert('Ce fichier ne semble pas être une sauvegarde Djinn valide.');}finally{$('importFile').value='';}};reader.readAsText(file);}
 
   navButtons.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
   $('timeAvailable').value=String(state.context.time||20);$('energy').value=String(state.context.energy||2);
@@ -232,9 +253,9 @@
   $('exportData').onclick=exportData;$('importData').onclick=()=>$('importFile').click();$('importFile').addEventListener('change',e=>importData(e.target.files?.[0]));
   $('placeToggle').onclick=()=>renderPlaceMenu('',true);$('taskPlace').addEventListener('input',e=>renderPlaceMenu(e.target.value));$('taskPlace').addEventListener('focus',e=>renderPlaceMenu(e.target.value));document.addEventListener('click',e=>{if(!$('placeSmartField').contains(e.target))$('placeMenu').classList.add('hidden');});
   $('taskRepeatUnit').addEventListener('focus',()=>{previousRepeatUnit=$('taskRepeatUnit').value;});$('taskRepeatUnit').addEventListener('change',e=>openTemporalPrompt(e.target.value));$('saveTemporal').onclick=saveTemporalPrompt;$('cancelTemporal').onclick=()=>closeTemporalPrompt(true);$('closeTemporal').onclick=()=>closeTemporalPrompt(true);$('temporalModal').addEventListener('click',e=>{if(e.target===$('temporalModal'))closeTemporalPrompt(true);});$('temporalNumber').addEventListener('keydown',e=>{if(e.key==='Enter')saveTemporalPrompt();});
-  $('closeTaskDetail').onclick=closeTaskDetail;$('detailClose').onclick=closeTaskDetail;$('detailDone').onclick=detailToggle;$('taskDetailModal').addEventListener('click',e=>{if(e.target===$('taskDetailModal'))closeTaskDetail();});
+  $('closeTaskDetail').onclick=closeTaskDetail;$('detailClose').onclick=closeTaskDetail;$('taskDetailModal').addEventListener('click',e=>{if(e.target===$('taskDetailModal'))closeTaskDetail();});
   $('resetDemo').onclick=()=>{if(!confirm('Réinitialiser toutes les données locales de Djinn ?'))return;state=defaultState();excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Données de démonstration réinitialisées.');};
 
-  ensureTodayProgram();renderHeader();renderBackupInfo();refreshSmartLists();renderTasks();renderLearning();renderStats();renderTodayProgram();chooseSuggestion();
+  const rolled=rolloverTodayProgram();if(rolled)localStorage.setItem(KEY,JSON.stringify(state));renderHeader();renderBackupInfo();refreshSmartLists();renderTasks();renderLearning();renderStats();renderTodayProgram();chooseSuggestion();
   if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
 })();
