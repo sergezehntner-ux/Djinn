@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -124,7 +124,12 @@
   function smartValues(kind){const hist=[...((state.smartMemory&&state.smartMemory[kind])||[])].sort(alphaSort);let active=[];if(kind==='places')active=[...new Set(state.tasks.map(t=>t.place).filter(Boolean))].sort(alphaSort);return {active,hist};}
   function refreshSmartLists(){
     const names=[...new Set(state.tasks.map(t=>t.name).filter(Boolean))].sort(alphaSort);$('taskNameSuggestions').innerHTML=names.map(x=>`<option value="${escapeHtml(x)}"></option>`).join('');
-    const {active}=smartValues('places');$('taskPlaceFilter').innerHTML='<option value="all">Tous les lieux</option>'+active.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    const placeFilter=$('taskPlaceFilter');
+    const selectedPlace=placeFilter.value||'all';
+    const {active}=smartValues('places');
+    placeFilter.innerHTML='<option value="all">Tous les lieux</option>'+active.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+    if(selectedPlace==='all'||active.includes(selectedPlace)) placeFilter.value=selectedPlace;
+    else placeFilter.value='all';
   }
   function renderPlaceMenu(query='',openedByToggle=false){const menu=$('placeMenu');const {active,hist}=smartValues('places');const q=query.trim().toLocaleLowerCase('fr');let vals;if(q){vals=hist.filter(v=>v.toLocaleLowerCase('fr').includes(q));}else{vals=active;}vals=[...new Set(vals)].sort(alphaSort);menu.innerHTML=(vals.length?vals.map(v=>`<button type="button" class="smart-option" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`).join(''):'<div class="smart-empty">Aucune valeur active</div>')+`<button type="button" class="smart-option other" data-other="1">… Autre</button>`;menu.classList.remove('hidden');menu.querySelectorAll('[data-value]').forEach(b=>b.onclick=()=>{$('taskPlace').value=b.dataset.value;menu.classList.add('hidden');});menu.querySelector('[data-other]').onclick=()=>{$('taskPlace').value='';menu.classList.add('hidden');$('taskPlace').focus();toast('Saisis le nouveau lieu : Djinn le gardera en mémoire.');};}
   function openForm(clear=true){$('taskForm').classList.remove('hidden');if(clear){returnToTaskId=null;$('formTitle').textContent='Ajouter une tâche';$('taskId').value='';$('taskName').value='';$('taskDuration').value=10;$('taskPlace').value='';$('taskImportance').value=2;$('taskUrgency').value=2;$('taskEffort').value=2;$('taskRepeatValue').value='0';$('taskRepeatUnit').value='none';previousRepeatUnit='none';updateTemporalSummary();$('taskConsequence').value='';}$('taskName').focus();}

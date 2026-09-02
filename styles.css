@@ -30,7 +30,7 @@ main{max-width:1420px;margin:0 auto;padding:22px}.view{display:none}.view.active
 
 /* v0.1.4 — seul le bouton + Ajouter reste fixé */
 
-/* v0.1.6 — bouton Ajouter seul en sticky, avec sa propre hauteur : jamais coupé */
+/* v0.1.7 — base v0.1.6 + correction filtre Lieu */
 .task-add-sticky{position:sticky;top:68px;z-index:18;width:max-content;min-height:52px;display:flex;align-items:flex-start;justify-content:flex-end;pointer-events:none;margin:-2px 0 16px auto}
 .task-add-sticky #openTaskForm{pointer-events:auto;margin:0;white-space:nowrap}
 @media(max-width:620px){.task-add-sticky{top:58px;min-height:48px}}
