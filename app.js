@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -21,8 +21,10 @@
   const navButtons = [...document.querySelectorAll('.nav-btn')];
 
   function cloneSeed(){ return JSON.parse(JSON.stringify(seedTasks)); }
-  function defaultState(){return {tasks:cloneSeed(),history:[],refusals:{},context:{time:20,energy:2},smartMemory:{places:[]},lastTransferAction:'Aucun export/import'};}
-  function normalizeTask(t){return {place:'',repeatValue:0,repeatUnit:'none',blockedUntil:null,lastDoneAt:null,done:false,...t};}
+  function todayKey(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+  function ensureTodayProgram(st=state){if(!st.todayProgram||st.todayProgram.date!==todayKey())st.todayProgram={date:todayKey(),taskIds:[]};if(!Array.isArray(st.todayProgram.taskIds))st.todayProgram.taskIds=[];st.todayProgram.taskIds=st.todayProgram.taskIds.filter(id=>st.tasks.some(t=>t.id===id));}
+  function defaultState(){return {tasks:cloneSeed(),history:[],refusals:{},context:{time:20,energy:2},smartMemory:{places:[]},todayProgram:{date:todayKey(),taskIds:[]},lastTransferAction:'Aucun export/import'};}
+  function normalizeTask(t){return {place:'',repeatValue:0,repeatUnit:'none',blockedUntil:null,lastDoneAt:null,done:false,events:[],...t,events:Array.isArray(t.events)?t.events:[]};}
   function load(){
     try{
       const raw=localStorage.getItem(KEY); if(!raw) return defaultState();
@@ -32,10 +34,13 @@
       if(!merged.lastTransferAction) merged.lastTransferAction='Aucun export/import';
       merged.smartMemory={places:[],...(parsed.smartMemory||{})};
       merged.tasks.forEach(t=>rememberSmart('places',t.place,merged));
+      ensureTodayProgram(merged);
+      // Migration douce : l'ancien historique devient aussi consultable dans chaque tâche.
+      (merged.history||[]).forEach(h=>{const t=merged.tasks.find(x=>x.id===h.taskId);if(t&&!t.events.some(e=>e.at===h.at&&e.type===h.type))t.events.push({...h});});
       return merged;
     }catch(e){return defaultState();}
   }
-  function save(){localStorage.setItem(KEY,JSON.stringify(state));renderHeader();renderStats();renderBackupInfo();}
+  function save(){ensureTodayProgram();localStorage.setItem(KEY,JSON.stringify(state));renderHeader();renderStats();renderBackupInfo();renderTodayProgram();}
   function nowLabel(){return new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
   function renderHeader(){$('lastAction').textContent=`Dernière action : ${state.lastTransferAction||'Aucun export/import'}`;}
   function renderBackupInfo(){$('backupInfo').textContent=`Dernière action : ${state.lastTransferAction||'Aucun export/import'}`;}
@@ -90,12 +95,12 @@
     if(t.place)bits.push(`elle se fait à ${t.place}`);
     return `Je te la propose parce que ${bits.join(', et ')}.`;
   }
-  function candidateList(time,energy){return state.tasks.filter(isAvailable).map(t=>({t,score:scoreTask(t,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'}));}
+  function candidateList(time,energy){return state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id)).map(t=>({t,score:scoreTask(t,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'}));}
   function chooseSuggestion(){
     const time=Number($('timeAvailable').value),energy=Number($('energy').value);state.context={time,energy};save();
-    const available=state.tasks.filter(isAvailable);
+    const available=state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id));
     if(!available.length){
-      currentSuggestionId=null;$('suggestionTitle').textContent='Rien ne presse';$('suggestionDuration').textContent='⏱ —';$('suggestionEffort').textContent='◉ —';$('suggestionPlace').classList.add('hidden');$('suggestionReason').textContent='Aucune tâche n’est actuellement proposable. Certaines peuvent être en période de repos.';$('consequenceText').textContent='Aucune conséquence importante détectée.';$('keepInMind').innerHTML=waitingSummary();return;
+      currentSuggestionId=null;$('suggestionTitle').textContent='Rien ne presse';$('suggestionDuration').textContent='⏱ —';$('suggestionEffort').textContent='◉ —';$('suggestionPlace').classList.add('hidden');$('suggestionReason').textContent='Aucune autre tâche n’est actuellement à proposer. Les tâches disponibles sont peut-être déjà dans ton programme ou en période de repos.';$('consequenceText').textContent='Aucune conséquence importante détectée.';$('keepInMind').innerHTML=waitingSummary();return;
     }
     let candidates=candidateList(time,energy);
     // Après avoir parcouru toute la liste avec « Autre chose », on recommence au début.
@@ -105,24 +110,40 @@
     $('suggestionTitle').textContent=t.name;$('suggestionDuration').textContent=`⏱ ≈ ${t.duration} min`;$('suggestionEffort').textContent=`◉ Effort ${['','facile','moyen','demandant'][t.effort]}`;
     if(t.place){$('suggestionPlace').textContent=`📍 ${t.place}`;$('suggestionPlace').classList.remove('hidden');}else $('suggestionPlace').classList.add('hidden');
     $('suggestionReason').textContent=reasonFor(t,time,energy);$('consequenceText').textContent=t.consequence||'Pas de conséquence renseignée.';
-    const others=state.tasks.filter(x=>isAvailable(x)&&x.id!==t.id).map(x=>({t:x,score:scoreTask(x,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'})).slice(0,3);
+    const others=state.tasks.filter(x=>isAvailable(x)&&!inTodayProgram(x.id)&&x.id!==t.id).map(x=>({t:x,score:scoreTask(x,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'})).slice(0,3);
     $('keepInMind').innerHTML=others.length?others.map(x=>`<button class="mini-item clickable" data-task-id="${x.t.id}"><strong>${escapeHtml(x.t.name)}</strong><span>≈ ${x.t.duration} min${x.t.place?' · '+escapeHtml(x.t.place):''} · ${urgencyLabel(x.t.urgency)}</span></button>`).join(''):waitingSummary();
     $('keepInMind').querySelectorAll('[data-task-id]').forEach(b=>b.onclick=()=>openTaskFromMind(b.dataset.taskId));
   }
   function waitingSummary(){const waiting=state.tasks.filter(isWaiting).sort((a,b)=>new Date(a.blockedUntil)-new Date(b.blockedUntil)).slice(0,3);if(!waiting.length)return '<div class="mini-item"><strong>Tout va bien</strong><span>Tu peux ajouter une nouvelle tâche quand elle apparaît.</span></div>';return waiting.map(t=>`<button class="mini-item clickable" data-task-id="${t.id}"><strong>${escapeHtml(t.name)}</strong><span>À reproposer après le ${formatDate(t.blockedUntil)}</span></button>`).join('');}
   function currentTask(){return state.tasks.find(t=>t.id===currentSuggestionId);}
 
+  function eventContext(now=new Date()){return {...state.context,dayPart:dayPart(now)};}
+  function recordTaskEvent(t,type,extra={}){const now=extra.at?new Date(extra.at):new Date();const ev={type,taskId:t.id,name:t.name,at:now.toISOString(),context:eventContext(now),place:t.place||'',...extra};t.events=Array.isArray(t.events)?t.events:[];t.events.unshift(ev);state.history.unshift({...ev});return ev;}
+  function inTodayProgram(id){ensureTodayProgram();return state.todayProgram.taskIds.includes(id);}
+  function addToTodayProgram(t,origin){ensureTodayProgram();if(!inTodayProgram(t.id))state.todayProgram.taskIds.push(t.id);recordTaskEvent(t,origin==='personal'?'personal':'accepted',{origin});}
+  function removeFromTodayProgram(id){ensureTodayProgram();state.todayProgram.taskIds=state.todayProgram.taskIds.filter(x=>x!==id);}
+
   function markTaskDone(t,source='done'){
     const now=new Date();t.lastDoneAt=now.toISOString();
     if(hasTemporalite(t)){t.done=false;t.blockedUntil=addPeriod(now,t.repeatValue,t.repeatUnit).toISOString();}
     else{t.done=true;t.doneAt=now.toISOString();t.blockedUntil=null;}
-    state.history.unshift({type:'done',taskId:t.id,name:t.name,at:now.toISOString(),context:{...state.context,dayPart:dayPart(now)},place:t.place||'',nextEligibleAt:t.blockedUntil||null});
+    recordTaskEvent(t,'done',{at:now.toISOString(),nextEligibleAt:t.blockedUntil||null,source});removeFromTodayProgram(t.id);
     if(source==='accepted'&&t.blockedUntil)toast(`Fait. Je ne te le reproposerai pas avant le ${formatDate(t.blockedUntil)}.`);else if(source==='accepted')toast('Fait — enregistré, sans points ni série à conserver.');
   }
-  function accepted(){const t=currentTask();if(!t)return;const now=new Date();state.history.unshift({type:'accepted',taskId:t.id,name:t.name,at:now.toISOString(),context:{...state.context,dayPart:dayPart(now)},place:t.place||''});excludedThisRound.add(t.id);save();toast('D’accord. Je retiens que cette proposition te convient dans ce contexte.');renderLearning();chooseSuggestion();}
-  function refused(){const t=currentTask();if(!t)return;const now=new Date();state.refusals[t.id]=(state.refusals[t.id]||0)+1;state.history.unshift({type:'refused',taskId:t.id,name:t.name,at:now.toISOString(),context:{...state.context,dayPart:dayPart(now)},place:t.place||''});excludedThisRound.add(t.id);save();toast('Compris. Je retiens surtout le contexte de ce refus.');renderLearning();chooseSuggestion();}
+  function accepted(){const t=currentTask();if(!t)return;if(!inTodayProgram(t.id))addToTodayProgram(t,'suggestion');excludedThisRound.add(t.id);save();toast('Ajouté à « Mon programme pour aujourd’hui ».');renderLearning();chooseSuggestion();}
+  function refused(){const t=currentTask();if(!t)return;state.refusals[t.id]=(state.refusals[t.id]||0)+1;recordTaskEvent(t,'refused');excludedThisRound.add(t.id);save();toast('Compris. Je retiens surtout le contexte de ce refus.');renderLearning();chooseSuggestion();}
   function another(){const t=currentTask();if(t)excludedThisRound.add(t.id);chooseSuggestion();toast('Je cherche une autre proposition.');}
   function why(){const t=currentTask();if(!t)return;alert(`${t.name}\n\n${reasonFor(t,state.context.time,state.context.energy)}\n\nSi tu attends : ${t.consequence||'aucune conséquence renseignée.'}`);}
+
+  function renderTodayProgram(){
+    const box=$('todayProgram');if(!box)return;ensureTodayProgram();
+    const tasks=state.todayProgram.taskIds.map(id=>state.tasks.find(t=>t.id===id)).filter(Boolean);
+    box.innerHTML=tasks.length?tasks.map(t=>`<article class="program-item" data-id="${t.id}"><div><strong>${escapeHtml(t.name)}</strong><span>≈ ${t.duration} min${t.place?' · 📍 '+escapeHtml(t.place):''}</span></div><div class="program-actions"><button class="primary small program-done">✓ Fait</button><button class="secondary small program-postpone">Repousser</button></div></article>`).join(''):'<p class="muted program-empty">Rien de choisi pour l’instant. Tu peux accepter une suggestion ou faire un « Choix personnel ».</p>';
+    box.querySelectorAll('.program-done').forEach(b=>b.onclick=()=>{const t=state.tasks.find(x=>x.id===b.closest('.program-item').dataset.id);if(!t)return;markTaskDone(t,'program');save();excludedThisRound.clear();renderTasks();renderLearning();chooseSuggestion();toast(t.blockedUntil?`Fait. À reproposer après le ${formatDate(t.blockedUntil)}.`:'Fait. La durée était-elle à peu près juste ? Sinon, modifie-la dans la tâche.');});
+    box.querySelectorAll('.program-postpone').forEach(b=>b.onclick=()=>{const t=state.tasks.find(x=>x.id===b.closest('.program-item').dataset.id);if(!t)return;recordTaskEvent(t,'postponed');removeFromTodayProgram(t.id);save();excludedThisRound.clear();renderLearning();chooseSuggestion();toast('Repoussé. Je garde aussi cette décision en mémoire.');});
+  }
+  function renderPersonalChoiceResults(){const q=$('personalChoiceSearch').value.trim().toLocaleLowerCase('fr');const box=$('personalChoiceResults');let tasks=state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id));if(q)tasks=tasks.filter(t=>t.name.toLocaleLowerCase('fr').includes(q));tasks.sort((a,b)=>a.name.localeCompare(b.name,'fr',{sensitivity:'base'}));if(!q){box.innerHTML='<div class="smart-empty">Commence à écrire le nom d’une tâche.</div>';return;}box.innerHTML=tasks.length?tasks.slice(0,8).map(t=>`<button class="choice-result" data-id="${t.id}"><strong>${escapeHtml(t.name)}</strong><span>≈ ${t.duration} min${t.place?' · '+escapeHtml(t.place):''}</span></button>`).join(''):'<div class="smart-empty">Aucune tâche correspondante disponible.</div>';box.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{const t=state.tasks.find(x=>x.id===b.dataset.id);if(!t)return;addToTodayProgram(t,'personal');save();$('personalChoiceSearch').value='';$('personalChoicePanel').classList.add('hidden');renderLearning();chooseSuggestion();toast(`« ${t.name} » ajouté à ton programme.`);});}
+  function togglePersonalChoice(){const panel=$('personalChoicePanel');panel.classList.toggle('hidden');if(!panel.classList.contains('hidden')){renderPersonalChoiceResults();setTimeout(()=>$('personalChoiceSearch').focus(),0);}}
 
   function taskStatus(t){if(t.done)return 'done';if(isWaiting(t))return 'waiting';return 'available';}
   function filteredTasks(){
@@ -133,9 +154,9 @@
     refreshSmartLists();const box=$('taskList');const tasks=filteredTasks();if(!tasks.length){box.innerHTML='<div class="card">Aucune tâche ne correspond au filtre.</div>';return;}
     box.innerHTML=tasks.map(t=>{
       const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';
-      return `<article class="task-card ${status}" data-id="${t.id}"><div><h3>${t.done?'✓ ':''}${escapeHtml(t.name)}</h3><div class="task-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="task-status">${statusText}</div><p class="muted">${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p></div><div class="task-actions"><button class="icon-btn edit-task">Modifier</button><button class="icon-btn toggle-task">${status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'Fait'}</button><button class="icon-btn delete-task">Supprimer</button></div></article>`;
+      return `<article class="task-card ${status}" data-id="${t.id}"><div><h3>${t.done?'✓ ':''}${escapeHtml(t.name)}</h3><div class="task-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="task-status">${statusText}</div><p class="muted">${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p></div><div class="task-actions"><button class="icon-btn history-task">Historique</button><button class="icon-btn edit-task">Modifier</button><button class="icon-btn toggle-task">${status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'Fait'}</button><button class="icon-btn delete-task">Supprimer</button></div></article>`;
     }).join('');
-    box.querySelectorAll('.edit-task').forEach(b=>b.onclick=()=>editTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.toggle-task').forEach(b=>b.onclick=()=>toggleTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.delete-task').forEach(b=>b.onclick=()=>deleteTask(b.closest('.task-card').dataset.id));
+    box.querySelectorAll('.history-task').forEach(b=>b.onclick=()=>openTaskFromMind(b.closest('.task-card').dataset.id));box.querySelectorAll('.edit-task').forEach(b=>b.onclick=()=>editTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.toggle-task').forEach(b=>b.onclick=()=>toggleTask(b.closest('.task-card').dataset.id));box.querySelectorAll('.delete-task').forEach(b=>b.onclick=()=>deleteTask(b.closest('.task-card').dataset.id));
   }
   function alphaSort(a,b){return a.localeCompare(b,'fr',{sensitivity:'base'});}
   function rememberSmart(kind,value,targetState=state){const v=String(value||'').trim();if(!v)return;targetState.smartMemory=targetState.smartMemory||{};targetState.smartMemory[kind]=targetState.smartMemory[kind]||[];if(!targetState.smartMemory[kind].some(x=>x.localeCompare(v,'fr',{sensitivity:'base'})===0))targetState.smartMemory[kind].push(v);targetState.smartMemory[kind].sort(alphaSort);}
@@ -164,7 +185,7 @@
   function toggleTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;if(isWaiting(t)){t.blockedUntil=null;t.done=false;toast('Cette tâche est de nouveau proposable maintenant.');}else if(t.done){t.done=false;delete t.doneAt;toast('Tâche réactivée.');}else{markTaskDone(t,'manual');if(t.blockedUntil)toast(`Fait. À reproposer après le ${formatDate(t.blockedUntil)}.`);else toast('Tâche marquée comme faite.');}save();excludedThisRound.clear();renderTasks();chooseSuggestion();}
   function deleteTask(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;if(!confirm(`Supprimer « ${t.name} » ?`))return;state.tasks=state.tasks.filter(x=>x.id!==id);save();excludedThisRound.clear();renderTasks();chooseSuggestion();}
   let detailTaskId=null;
-  function openTaskFromMind(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;detailTaskId=id;const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';$('detailTitle').textContent=t.name;$('taskDetailBody').innerHTML=`<div class="detail-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="detail-status">${statusText}</div><p>${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p>`;$('detailDone').textContent=status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'✓ Fait';$('taskDetailModal').classList.remove('hidden');}
+  function openTaskFromMind(id){const t=state.tasks.find(x=>x.id===id);if(!t)return;detailTaskId=id;const status=taskStatus(t);const statusText=status==='waiting'?`À reproposer après le ${formatDate(t.blockedUntil)}`:status==='done'?'Terminée':'Proposable maintenant';const labels={done:'✓ Fait',accepted:'👍 Je m’y mets',refused:'☹ Pas envie',personal:'👤 Choix personnel',postponed:'↪ Repoussé'};const hist=(t.events||[]).slice().sort((a,b)=>new Date(b.at)-new Date(a.at));const histHtml=hist.length?hist.map(e=>`<div class="task-history-row"><strong>${labels[e.type]||escapeHtml(e.type)}</strong><span>${new Date(e.at).toLocaleString('fr-FR')}</span></div>`).join(''):'<p class="muted">Aucune action enregistrée pour cette tâche.</p>';$('detailTitle').textContent=t.name;$('taskDetailBody').innerHTML=`<div class="detail-meta"><span>≈ ${t.duration} min</span><span>Importance ${t.importance}/3</span><span>Urgence ${t.urgency}/3</span><span>Effort ${t.effort}/3</span>${t.place?`<span>📍 ${escapeHtml(t.place)}</span>`:''}${hasTemporalite(t)?`<span>↻ ${escapeHtml(temporaliteLabel(t))}</span>`:''}</div><div class="detail-status">${statusText}</div><p>${escapeHtml(t.consequence||'Aucune conséquence renseignée.')}</p><h3 class="history-title">Historique de cette tâche</h3><div class="task-history">${histHtml}</div>`;$('detailDone').textContent=status==='waiting'?'Réactiver maintenant':t.done?'Réactiver':'✓ Fait';$('taskDetailModal').classList.remove('hidden');}
   function closeTaskDetail(){$('taskDetailModal').classList.add('hidden');detailTaskId=null;}
   function detailToggle(){if(!detailTaskId)return;toggleTask(detailTaskId);closeTaskDetail();}
 
@@ -190,7 +211,7 @@
     else if(!refusalSignals.length)html+='<p class="muted">J’ai enregistré des refus, mais pas encore assez de répétitions dans un même contexte pour en tirer une habitude.</p>';
     else html+=refusalSignals.slice(0,6).map(g=>`<div class="learning-row"><strong>${escapeHtml(g.h.name)}</strong><div>${g.n} refus dans un contexte proche · ${contextLine(g)}. <span class="muted">Djinn évitera davantage cette proposition dans ce contexte, pas dans les autres.</span></div></div>`).join('');
     html+='<h3 style="margin-top:16px">Observations récentes</h3>';
-    const label={done:'✓ Fait',accepted:'👍 Accepté',refused:'☹ Pas envie'};
+    const label={done:'✓ Fait',accepted:'👍 Je m’y mets',refused:'☹ Pas envie',personal:'👤 Choix personnel',postponed:'↪ Repoussé'};
     html+=recent.length?recent.map(h=>`<div class="learning-row"><strong>${label[h.type]||'• Observation'} — ${escapeHtml(h.name)}</strong><div class="muted">${new Date(h.at).toLocaleString('fr-FR')} · ${h.context?.dayPart||dayPart(new Date(h.at))} · ${h.context?.time===999?'temps libre':(h.context?.time||'?')+' min'} · énergie ${h.context?.energy||'?'}/3${h.place?' · '+escapeHtml(h.place):''}${h.nextEligibleAt?' · reproposable le '+formatDate(h.nextEligibleAt):''}</div></div>`).join(''):'<p class="muted">Aucune observation enregistrée pour l’instant.</p>';
     $('learningList').innerHTML=html;
   }
@@ -199,12 +220,12 @@
   function setView(id){views.forEach(v=>v.classList.toggle('active',v.id===id));navButtons.forEach(b=>b.classList.toggle('active',b.dataset.view===id));window.scrollTo({top:0,behavior:'smooth'});if(id==='tasks')renderTasks();if(id==='learning')renderLearning();}
 
   function exportData(){const payload={app:'Djinn',version:VERSION,exportedAt:new Date().toISOString(),state};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);const stamp=new Date().toISOString().replace(/[:T]/g,'-').slice(0,16);a.download=`Djinn_${stamp}.djinnbak`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);state.lastTransferAction=`Export ${a.download} · ${nowLabel()}`;save();toast('Sauvegarde exportée.');}
-  function importData(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);const incoming=parsed.state||parsed;if(!incoming||!Array.isArray(incoming.tasks))throw new Error('format');if(!confirm(`Importer « ${file.name} » et remplacer les données locales actuelles ?`))return;state={...defaultState(),...incoming,tasks:incoming.tasks.map(normalizeTask),smartMemory:{places:[],...(incoming.smartMemory||{})}};state.tasks.forEach(t=>rememberSmart('places',t.place));state.lastTransferAction=`Import ${file.name} · ${nowLabel()}`;excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Sauvegarde importée.');}catch(e){alert('Ce fichier ne semble pas être une sauvegarde Djinn valide.');}finally{$('importFile').value='';}};reader.readAsText(file);}
+  function importData(file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const parsed=JSON.parse(reader.result);const incoming=parsed.state||parsed;if(!incoming||!Array.isArray(incoming.tasks))throw new Error('format');if(!confirm(`Importer « ${file.name} » et remplacer les données locales actuelles ?`))return;state={...defaultState(),...incoming,tasks:incoming.tasks.map(normalizeTask),smartMemory:{places:[],...(incoming.smartMemory||{})}};state.tasks.forEach(t=>rememberSmart('places',t.place));ensureTodayProgram();(state.history||[]).forEach(h=>{const t=state.tasks.find(x=>x.id===h.taskId);if(t&&!t.events.some(e=>e.at===h.at&&e.type===h.type))t.events.push({...h});});state.lastTransferAction=`Import ${file.name} · ${nowLabel()}`;excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Sauvegarde importée.');}catch(e){alert('Ce fichier ne semble pas être une sauvegarde Djinn valide.');}finally{$('importFile').value='';}};reader.readAsText(file);}
 
   navButtons.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
   $('timeAvailable').value=String(state.context.time||20);$('energy').value=String(state.context.energy||2);
   $('timeAvailable').addEventListener('change',()=>{excludedThisRound.clear();chooseSuggestion();});$('energy').addEventListener('change',()=>{excludedThisRound.clear();chooseSuggestion();});
-  $('doIt').onclick=accepted;$('notNow').onclick=refused;$('another').onclick=another;$('whyTop').onclick=why;
+  $('doIt').onclick=accepted;$('notNow').onclick=refused;$('another').onclick=another;$('whyTop').onclick=why;$('personalChoice').onclick=togglePersonalChoice;$('personalChoiceSearch').addEventListener('input',renderPersonalChoiceResults);
   $('openTaskForm').onclick=()=>openForm(true);$('cancelTask').onclick=closeForm;$('saveTask').onclick=saveTask;
   ['taskSearch','taskStatusFilter','taskPlaceFilter'].forEach(id=>$(id).addEventListener(id==='taskSearch'?'input':'change',renderTasks));
   $('photoDemo').onclick=()=>toast('La photo sera activée dans une prochaine version.');$('voiceDemo').onclick=()=>toast('La voix viendra plus tard.');$('writeDemo').onclick=()=>{setView('tasks');openForm(true);toast('Pour l’instant, écris la situation comme une tâche.');};
@@ -214,6 +235,6 @@
   $('closeTaskDetail').onclick=closeTaskDetail;$('detailClose').onclick=closeTaskDetail;$('detailDone').onclick=detailToggle;$('taskDetailModal').addEventListener('click',e=>{if(e.target===$('taskDetailModal'))closeTaskDetail();});
   $('resetDemo').onclick=()=>{if(!confirm('Réinitialiser toutes les données locales de Djinn ?'))return;state=defaultState();excludedThisRound.clear();save();renderTasks();renderLearning();chooseSuggestion();toast('Données de démonstration réinitialisées.');};
 
-  renderHeader();renderBackupInfo();refreshSmartLists();renderTasks();renderLearning();renderStats();chooseSuggestion();
+  ensureTodayProgram();renderHeader();renderBackupInfo();refreshSmartLists();renderTasks();renderLearning();renderStats();renderTodayProgram();chooseSuggestion();
   if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
 })();

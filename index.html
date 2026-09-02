@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#6d477c">
   <meta name="description" content="Djinn — aide intuitive au quotidien, local-first.">
-  <title>Djinn v0.2.1</title>
+  <title>Djinn v0.2.2</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=0210">
+  <link rel="stylesheet" href="styles.css?v=0220">
 </head>
 <body>
   <header class="app-header">
@@ -18,7 +18,7 @@
       <div>
         <h1>Djinn</h1>
         <div class="tagline">Votre quotidien, sans la charge mentale</div>
-        <small>v0.2.1 · Apprentissage</small>
+        <small>v0.2.2 · Programme</small>
       </div>
     </div>
     <div id="lastAction" class="last-action">Dernière action : aucun export/import</div>
@@ -53,6 +53,12 @@
           </label>
         </div>
       </div>
+
+      <section class="card today-program-card">
+        <div class="program-head"><div><div class="eyebrow">📌 Mon programme pour aujourd’hui</div><p class="muted">Tes choix restent ici jusqu’à ce qu’ils soient faits ou repoussés.</p></div><button id="personalChoice" class="secondary small">Choix personnel</button></div>
+        <div id="personalChoicePanel" class="personal-choice-panel hidden"><label>Choisir parmi mes tâches<input id="personalChoiceSearch" type="search" autocomplete="off" placeholder="Commence à écrire, p. ex. rep…"></label><div id="personalChoiceResults" class="choice-results"></div></div>
+        <div id="todayProgram" class="today-program"></div>
+      </section>
 
       <div class="dashboard-grid">
         <article class="card suggestion-card">
@@ -113,7 +119,7 @@
       <div id="taskList" class="task-list"></div>
     </section>
 
-    <section id="learning" class="view"><div class="title-row"><div><div class="eyebrow">🧠 Ce que Djinn apprend</div><h2>Apprentissages</h2><p class="muted">Djinn mémorise les acceptations, refus et contextes observés.</p></div></div><div id="learningList" class="card"></div></section>
+    <section id="learning" class="view"><div class="title-row"><div><div class="eyebrow">🧠 Ce que Djinn apprend</div><h2>Apprentissages</h2><p class="muted">Djinn mémorise tes décisions et leurs contextes, tâche par tâche.</p></div></div><div id="learningList" class="card"></div></section>
 
     <section id="more" class="view">
       <div class="title-row"><div><div class="eyebrow">⚙ Réglages</div><h2>Plus</h2></div></div>
@@ -133,6 +139,6 @@
   <div id="taskDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">📝 Tâche</div><h2 id="detailTitle">Tâche</h2></div><button id="closeTaskDetail" class="icon-btn" aria-label="Fermer">✕</button></div><div id="taskDetailBody"></div><div class="actions"><button id="detailDone" class="primary">✓ Fait</button><button id="detailClose" class="secondary">Retour</button></div></div></div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0210"></script>
+  <script src="app.js?v=0220"></script>
 </body>
 </html>
