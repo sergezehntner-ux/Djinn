@@ -68,3 +68,21 @@ p{line-height:1.4;margin:.55rem 0}
   body{font-size:16px}.app-header{padding-top:14px;padding-bottom:14px}.app-logo{width:72px;height:72px}
   .suggestion-card{padding:17px}.welcome{padding:17px 20px}
 }
+
+
+/* v0.1.9 — finition : + Ajouter remonte et flotte à droite du titre, sans créer une rangée vide */
+#tasks .title-row{padding-right:170px;min-height:72px;margin-bottom:4px}
+.task-add-sticky{
+  top:68px;
+  min-height:44px;
+  height:44px;
+  margin:-58px 0 10px auto;
+  align-items:flex-start;
+}
+.task-add-sticky #openTaskForm{min-height:44px;padding:10px 15px}
+
+@media(max-width:620px){
+  #tasks .title-row{padding-right:118px;min-height:62px;margin-bottom:3px}
+  .task-add-sticky{top:58px;min-height:42px;height:42px;margin:-50px 0 8px auto}
+  .task-add-sticky #openTaskForm{min-height:42px;padding:9px 12px;font-size:.92rem}
+}
