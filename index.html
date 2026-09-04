@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=0240">
+  <link rel="stylesheet" href="styles.css?v=0250">
 </head>
 <body>
   <header class="app-header">
@@ -18,7 +18,7 @@
       <div>
         <h1>Djinn</h1>
         <div class="tagline">Votre quotidien, sans la charge mentale</div>
-        <small>v0.2.4 · Prévoir</small>
+        <small>v0.2.5 · Prévoir</small>
       </div>
     </div>
     <div id="lastAction" class="last-action">Dernière action : aucun export/import</div>
@@ -102,8 +102,8 @@
           <label>Urgence<select id="taskUrgency"><option value="1">Peut attendre</option><option value="2" selected>Bientôt</option><option value="3">Urgent</option></select></label>
           <label>Effort<select id="taskEffort"><option value="1">Facile</option><option value="2" selected>Moyen</option><option value="3">Demandant</option></select></label>
           <label>À reproposer après<select id="taskRepeatUnit"><option value="none">Aucune temporalité</option><option value="days">Jours…</option><option value="weeks">Semaines…</option><option value="months">Mois…</option><option value="years">Années…</option></select><input id="taskRepeatValue" type="hidden" value="0"><div id="temporalSummary" class="field-hint">Aucune temporalité</div></label>
-          <label>Prévoir pour<input id="taskPlannedFor" type="date"></label>
           <label class="wide">Conséquence si j’attends<input id="taskConsequence" placeholder="p. ex. risque de manquer de vêtements propres"></label>
+          <label class="planned-field">Prévoir pour<input id="taskPlannedFor" type="date"></label>
         </div>
         <datalist id="taskNameSuggestions"></datalist>
         <div class="actions"><button id="saveTask" class="primary">Enregistrer</button><button id="cancelTask" class="secondary">Annuler</button></div>
@@ -140,6 +140,6 @@
   <div id="taskDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="detailTitle"><div class="modal-card"><div class="modal-head"><div><div class="eyebrow">📝 Tâche</div><h2 id="detailTitle">Tâche</h2></div><button id="closeTaskDetail" class="icon-btn" aria-label="Fermer">✕</button></div><div id="taskDetailBody"></div><div class="actions"><button id="detailClose" class="secondary">Retour</button></div></div></div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=0240"></script>
+  <script src="app.js?v=0250"></script>
 </body>
 </html>
