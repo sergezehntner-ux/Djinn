@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.6';
   // On conserve volontairement la même clé que v0.1.0 afin de garder les données existantes.
   const KEY = 'djinn-v0100-state';
   const seedTasks = [
@@ -15,6 +15,9 @@
   let currentSuggestionId = null;
   let excludedThisRound = new Set();
   let returnToTaskId = null;
+  // v0.2.6 : séquence facultative de propositions dans le temps restant.
+  let followUpSession = null; // {remaining, preferredPlace}
+  let currentSuggestionContext = {time:null, followUp:false, samePlace:false};
 
   const $ = id => document.getElementById(id);
   const views = [...document.querySelectorAll('.view')];
@@ -105,20 +108,46 @@
     return `Je te la propose parce que ${bits.join(', et ')}.`;
   }
   function candidateList(time,energy){return state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id)).map(t=>({t,score:scoreTask(t,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'}));}
+  function samePlace(a,b){return !!a&&!!b&&String(a).trim().toLocaleLowerCase('fr')===String(b).trim().toLocaleLowerCase('fr');}
+  function followUpCandidates(time,energy,preferredPlace){
+    const fit=state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id)&&!excludedThisRound.has(t.id)&&Number(t.duration)<=time);
+    const same=preferredPlace?fit.filter(t=>samePlace(t.place,preferredPlace)):[];
+    const pool=same.length?same:fit;
+    return {samePlace:!!same.length,candidates:pool.map(t=>({t,score:scoreTask(t,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'}))};
+  }
   function chooseSuggestion(){
-    const time=Number($('timeAvailable').value),energy=Number($('energy').value);state.context={time,energy};save();
+    const baseTime=Number($('timeAvailable').value),energy=Number($('energy').value);
+    const usingFollowUp=!!(followUpSession&&Number(followUpSession.remaining)>0&&baseTime!==999);
+    const time=usingFollowUp?Number(followUpSession.remaining):baseTime;
+    state.context={time:baseTime,energy};save();
     const available=state.tasks.filter(t=>isAvailable(t)&&!inTodayProgram(t.id));
     if(!available.length){
       currentSuggestionId=null;$('suggestionTitle').textContent='Rien ne presse';$('suggestionDuration').textContent='⏱ —';$('suggestionEffort').textContent='◉ —';$('suggestionPlace').classList.add('hidden');$('suggestionReason').textContent='Aucune autre tâche n’est actuellement à proposer. Les tâches disponibles sont peut-être déjà dans ton programme ou en période de repos.';$('consequenceText').textContent='Aucune conséquence importante détectée.';$('keepInMind').innerHTML=waitingSummary();return;
     }
-    let candidates=candidateList(time,energy);
-    // Après avoir parcouru toute la liste avec « Autre chose », on recommence au début.
-    if(!candidates.length || candidates[0].score<=-9000){excludedThisRound.clear();candidates=candidateList(time,energy);}
-    if(candidates[0].score<-400){candidates=available.filter(t=>!excludedThisRound.has(t.id)).map(t=>({t,score:(t.importance*4+t.urgency*4)-(t.duration/30)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'}));if(!candidates.length){excludedThisRound.clear();return chooseSuggestion();}}
-    const t=candidates[0].t;currentSuggestionId=t.id;
+    let candidates,followUpSamePlace=false;
+    if(usingFollowUp){
+      const result=followUpCandidates(time,energy,followUpSession.preferredPlace);
+      candidates=result.candidates;followUpSamePlace=result.samePlace;
+      if(!candidates.length){
+        followUpSession=null;excludedThisRound.clear();
+        toast(`Je n’ai rien qui tienne dans les ≈ ${time} min restantes. Je reviens aux propositions habituelles.`);
+        return chooseSuggestion();
+      }
+    }else{
+      candidates=candidateList(time,energy);
+      // Après avoir parcouru toute la liste avec « Autre chose », on recommence au début.
+      if(!candidates.length || candidates[0].score<=-9000){excludedThisRound.clear();candidates=candidateList(time,energy);}
+      if(candidates[0].score<-400){candidates=available.filter(t=>!excludedThisRound.has(t.id)).map(t=>({t,score:(t.importance*4+t.urgency*4)-(t.duration/30)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'}));if(!candidates.length){excludedThisRound.clear();return chooseSuggestion();}}
+    }
+    const t=candidates[0].t;currentSuggestionId=t.id;currentSuggestionContext={time,followUp:usingFollowUp,samePlace:followUpSamePlace};
     $('suggestionTitle').textContent=t.name;$('suggestionDuration').textContent=`⏱ ≈ ${t.duration} min`;$('suggestionEffort').textContent=`◉ Effort ${['','facile','moyen','demandant'][t.effort]}`;
     if(t.place){$('suggestionPlace').textContent=`📍 ${t.place}`;$('suggestionPlace').classList.remove('hidden');}else $('suggestionPlace').classList.add('hidden');
-    $('suggestionReason').textContent=reasonFor(t,time,energy);$('consequenceText').textContent=t.consequence||'Pas de conséquence renseignée.';
+    if(usingFollowUp&&followUpSamePlace&&followUpSession.preferredPlace){
+      $('suggestionReason').textContent=`Puisque tu es déjà à ${t.place}, celle-ci tient aussi dans les ≈ ${time} minutes qu’il te reste.`;
+    }else if(usingFollowUp){
+      $('suggestionReason').textContent=`Elle tient dans les ≈ ${time} minutes qu’il te reste. ${reasonFor(t,time,energy)}`;
+    }else $('suggestionReason').textContent=reasonFor(t,time,energy);
+    $('consequenceText').textContent=t.consequence||'Pas de conséquence renseignée.';
     const others=state.tasks.filter(x=>isAvailable(x)&&!inTodayProgram(x.id)&&x.id!==t.id).map(x=>({t:x,score:scoreTask(x,time,energy)})).sort((a,b)=>b.score-a.score||a.t.name.localeCompare(b.t.name,'fr',{sensitivity:'base'})).slice(0,3);
     $('keepInMind').innerHTML=others.length?others.map(x=>`<button class="mini-item clickable" data-task-id="${x.t.id}"><strong>${escapeHtml(x.t.name)}</strong><span>≈ ${x.t.duration} min${x.t.place?' · '+escapeHtml(x.t.place):''} · ${urgencyLabel(x.t.urgency)}</span></button>`).join(''):waitingSummary();
     $('keepInMind').querySelectorAll('[data-task-id]').forEach(b=>b.onclick=()=>openTaskFromMind(b.dataset.taskId));
@@ -144,10 +173,30 @@
     return recordTaskEvent(t,'done',{at:now.toISOString(),nextEligibleAt:t.blockedUntil||null,source,before});
   }
   function undoProgramDone(t,e){if(!e||e.status!=='done')return;const doneEvent=(t.events||[]).find(ev=>ev.id===e.doneEventId);if(doneEvent)setEventCancelled(t,doneEvent.id,true);recomputeTaskCompletion(t);recordTaskEvent(t,'cancelled',{targetType:'done',targetEventId:e.doneEventId,source:'program'});e.status='active';delete e.doneEventId;}
-  function accepted(){const t=currentTask();if(!t)return;if(!inTodayProgram(t.id))addToTodayProgram(t,'suggestion');excludedThisRound.add(t.id);save();toast('Ajouté à « Mon programme pour aujourd’hui ».');renderLearning();chooseSuggestion();}
+  function closeFollowUpModal(){if($('followUpModal'))$('followUpModal').classList.add('hidden');}
+  function showFollowUpModal(remaining,place){
+    if(!$('followUpModal'))return;
+    $('followUpText').textContent=`Il te reste encore environ ${remaining} minute${remaining>1?'s':''} disponible${remaining>1?'s':''}. Veux-tu encore une autre proposition ?`;
+    $('followUpModal').dataset.remaining=String(remaining);$('followUpModal').dataset.place=place||'';$('followUpModal').classList.remove('hidden');
+  }
+  function acceptFollowUp(){
+    const remaining=Number($('followUpModal').dataset.remaining)||0,preferredPlace=$('followUpModal').dataset.place||'';closeFollowUpModal();
+    if(remaining<=0)return;followUpSession={remaining,preferredPlace};excludedThisRound.clear();chooseSuggestion();
+    setTimeout(()=>document.querySelector('.suggestion-card')?.scrollIntoView({behavior:'smooth',block:'center'}),60);
+  }
+  function declineFollowUp(){followUpSession=null;closeFollowUpModal();}
+  function accepted(){
+    const t=currentTask();if(!t)return;
+    const budget=Number(currentSuggestionContext.time);
+    const remaining=(budget!==999&&Number.isFinite(budget))?Math.max(0,Math.round(budget-Number(t.duration||0))):0;
+    if(!inTodayProgram(t.id))addToTodayProgram(t,'suggestion');excludedThisRound.add(t.id);
+    // La proposition standard suivante est déjà prête derrière le pop-up.
+    followUpSession=null;save();renderLearning();chooseSuggestion();toast('Ajouté à « Mon programme pour aujourd’hui ».');
+    if(remaining>0)showFollowUpModal(remaining,t.place||'');
+  }
   function refused(){const t=currentTask();if(!t)return;state.refusals[t.id]=(state.refusals[t.id]||0)+1;recordTaskEvent(t,'refused');excludedThisRound.add(t.id);save();toast('Compris. Je retiens surtout le contexte de ce refus.');renderLearning();chooseSuggestion();}
   function another(){const t=currentTask();if(t)excludedThisRound.add(t.id);chooseSuggestion();toast('Je cherche une autre proposition.');}
-  function why(){const t=currentTask();if(!t)return;alert(`${t.name}\n\n${reasonFor(t,state.context.time,state.context.energy)}\n\nSi tu attends : ${t.consequence||'aucune conséquence renseignée.'}`);}
+  function why(){const t=currentTask();if(!t)return;const whyTime=Number(currentSuggestionContext.time)||state.context.time;alert(`${t.name}\n\n${reasonFor(t,whyTime,state.context.energy)}\n\nSi tu attends : ${t.consequence||'aucune conséquence renseignée.'}`);}
 
   function renderTodayProgram(){
     const box=$('todayProgram');if(!box)return;rolloverTodayProgram();normalizeTodayProgram();
@@ -247,8 +296,9 @@
 
   navButtons.forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
   $('timeAvailable').value=String(state.context.time||20);$('energy').value=String(state.context.energy||2);
-  $('timeAvailable').addEventListener('change',()=>{excludedThisRound.clear();chooseSuggestion();});$('energy').addEventListener('change',()=>{excludedThisRound.clear();chooseSuggestion();});
+  $('timeAvailable').addEventListener('change',()=>{followUpSession=null;closeFollowUpModal();excludedThisRound.clear();chooseSuggestion();});$('energy').addEventListener('change',()=>{followUpSession=null;closeFollowUpModal();excludedThisRound.clear();chooseSuggestion();});
   $('doIt').onclick=accepted;$('notNow').onclick=refused;$('another').onclick=another;$('whyTop').onclick=why;$('personalChoice').onclick=togglePersonalChoice;$('personalChoiceSearch').addEventListener('input',renderPersonalChoiceResults);
+  $('followUpYes').onclick=acceptFollowUp;$('followUpNo').onclick=declineFollowUp;$('followUpModal').addEventListener('click',e=>{if(e.target===$('followUpModal'))declineFollowUp();});
   $('openTaskForm').onclick=()=>openForm(true);$('cancelTask').onclick=closeForm;$('saveTask').onclick=saveTask;
   ['taskSearch','taskStatusFilter','taskPlaceFilter'].forEach(id=>$(id).addEventListener(id==='taskSearch'?'input':'change',renderTasks));
   $('photoDemo').onclick=()=>toast('La photo sera activée dans une prochaine version.');$('voiceDemo').onclick=()=>toast('La voix viendra plus tard.');$('writeDemo').onclick=()=>{setView('tasks');openForm(true);toast('Pour l’instant, écris la situation comme une tâche.');};

@@ -109,3 +109,8 @@ p{line-height:1.4;margin:.55rem 0}
 .history-correction-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:9px;margin-bottom:9px}
 .history-correction-grid label{display:grid;gap:4px;font-weight:750}
 @media(max-width:620px){.history-row-right{justify-content:flex-start;flex-wrap:wrap}.history-correction-grid{grid-template-columns:1fr}}
+
+/* v0.2.6 — proposition facultative dans le temps restant */
+.follow-up-text{font-size:1.05rem;line-height:1.45;margin:14px 0 4px}
+.follow-up-actions{margin-top:14px}
+.follow-up-actions>*{flex:1 1 120px}
